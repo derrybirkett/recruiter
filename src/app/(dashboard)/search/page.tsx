@@ -152,11 +152,6 @@ function candidateMatchesFilter(candidate: Candidate, filter: ExtractedFilter): 
   }
 }
 
-const CATEGORY_ORDER: Partial<Record<FilterCategory, number>> = {
-  TITLE: 0, SKILL: 1, EXPERIENCE: 2, CITY: 3,
-  "WORK PREF": 4, INDUSTRY: 5, LANGUAGE: 6, "LAST ACTIVE": 7, SENIORITY: 8, INFERRED: 9,
-};
-
 const DEFAULT_CATEGORY_ORDER: FilterCategory[] = [
   "TITLE", "SKILL", "EXPERIENCE", "CITY",
   "WORK PREF", "INDUSTRY", "LANGUAGE", "LAST ACTIVE", "SENIORITY", "INFERRED",
@@ -910,13 +905,13 @@ export default function SearchPage() {
   const [lastSearch, setLastSearch] = useState<LastSearch | null>(() => loadLastSearch() ?? SEED_LAST_SEARCH);
   const [categoryOrder, setCategoryOrder] = useState<FilterCategory[]>(DEFAULT_CATEGORY_ORDER);
 
-  function handleReorder(activeId: FilterCategory, overId: FilterCategory) {
+  const handleReorder = useCallback((activeId: FilterCategory, overId: FilterCategory) => {
     setCategoryOrder((prev) => {
       const from = prev.indexOf(activeId);
       const to = prev.indexOf(overId);
       return from === -1 || to === -1 ? prev : arrayMove(prev, from, to);
     });
-  }
+  }, []);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
