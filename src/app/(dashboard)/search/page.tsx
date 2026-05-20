@@ -182,7 +182,11 @@ function CandidateFilterChips({
       (acc[f.category] ??= []).push(f);
       return acc;
     }, {})
-  ).sort(([a], [b]) => (categoryOrder.indexOf(a as FilterCategory) ?? 99) - (categoryOrder.indexOf(b as FilterCategory) ?? 99));
+  ).sort(([a], [b]) => {
+    const ai = categoryOrder.indexOf(a as FilterCategory);
+    const bi = categoryOrder.indexOf(b as FilterCategory);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
 
   const skillFilters = filters.filter((f) => f.category === "SKILL");
   const extraSkills = candidate.skills.filter(
@@ -587,10 +591,36 @@ function GroupedFilterChip({
   );
 }
 
+function SortableChipWrapper({
+  id,
+  children,
+}: {
+  id: string;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={cn("touch-none", isDragging && "opacity-30")}
+      {...attributes}
+      {...listeners}
+    >
+      {children}
+    </div>
+  );
+}
+
 function ChipBar({
   filters,
   confirmed,
   categoryOrder,
+  onReorder,
   onDismiss,
   onConfirm,
   onUpdate,
@@ -601,6 +631,7 @@ function ChipBar({
   filters: ExtractedFilter[];
   confirmed: boolean;
   categoryOrder: FilterCategory[];
+  onReorder: (activeId: FilterCategory, overId: FilterCategory) => void;
   onDismiss: (id: string) => void;
   onConfirm: (id: string) => void;
   onUpdate: (id: string, newValue: string) => void;
@@ -608,6 +639,13 @@ function ChipBar({
   onConfirmAll: () => void;
   onDismissAll: () => void;
 }) {
+  const [activeCategory, setActiveCategory] = useState<FilterCategory | null>(null);
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+  );
+
   if (filters.length === 0) return null;
 
   return (
@@ -642,7 +680,11 @@ function ChipBar({
             return acc;
           }, {})
         )
-          .sort(([a], [b]) => (categoryOrder.indexOf(a as FilterCategory) ?? 99) - (categoryOrder.indexOf(b as FilterCategory) ?? 99))
+          .sort(([a], [b]) => {
+            const ai = categoryOrder.indexOf(a as FilterCategory);
+            const bi = categoryOrder.indexOf(b as FilterCategory);
+            return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+          })
           .map(([, group]) => {
             const g = group!;
             return g.length === 1 ? (
@@ -775,7 +817,11 @@ function LastSearchBanner({
             return acc;
           }, {})
         )
-          .sort(([a], [b]) => (categoryOrder.indexOf(a as FilterCategory) ?? 99) - (categoryOrder.indexOf(b as FilterCategory) ?? 99))
+          .sort(([a], [b]) => {
+            const ai = categoryOrder.indexOf(a as FilterCategory);
+            const bi = categoryOrder.indexOf(b as FilterCategory);
+            return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+          })
           .map(([category, group]) => {
             const g = group!;
             const unconfirmed = g.some((f) => !f.confirmed);
@@ -1130,6 +1176,7 @@ export default function SearchPage() {
                 filters={filters}
                 confirmed={confirmed}
                 categoryOrder={categoryOrder}
+                onReorder={handleReorder}
                 onDismiss={handleDismissFilter}
                 onConfirm={(id) => setFilters((f) => f.map((x) => x.id === id ? { ...x, confirmed: true } : x))}
                 onUpdate={handleUpdate}
