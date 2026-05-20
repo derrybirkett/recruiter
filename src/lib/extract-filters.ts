@@ -4,6 +4,9 @@ export type FilterCategory =
   | "CITY"
   | "INDUSTRY"
   | "WORK PREF"
+  | "LANGUAGE"
+  | "SENIORITY"
+  | "EXPERIENCE"
   | "INFERRED";
 
 export interface ExtractedFilter {
@@ -12,6 +15,7 @@ export interface ExtractedFilter {
   value: string;
   matchedText: string;
   confidence: "high" | "low";
+  confirmed: boolean;
   start: number;
   end: number;
 }
@@ -84,6 +88,7 @@ export function extractFilters(text: string): ExtractedFilter[] {
       value: titleCase(m.text),
       matchedText: m.text,
       confidence: "high",
+      confirmed: false,
       start: m.start,
       end: m.end,
     });
@@ -102,6 +107,7 @@ export function extractFilters(text: string): ExtractedFilter[] {
       value: canonical,
       matchedText: m.text,
       confidence: "high",
+      confirmed: false,
       start: m.start,
       end: m.end,
     });
@@ -118,6 +124,7 @@ export function extractFilters(text: string): ExtractedFilter[] {
       value: `${capitalize(m.text)}${country ? `, ${country}` : ""}`,
       matchedText: m.text,
       confidence: "high",
+      confirmed: false,
       start: m.start,
       end: m.end,
     });
@@ -133,6 +140,7 @@ export function extractFilters(text: string): ExtractedFilter[] {
       value: titleCase(m.text.replace(/-/g, " ")),
       matchedText: m.text,
       confidence: "high",
+      confirmed: false,
       start: m.start,
       end: m.end,
     });
@@ -152,6 +160,7 @@ export function extractFilters(text: string): ExtractedFilter[] {
       value: normalised.charAt(0).toUpperCase() + normalised.slice(1),
       matchedText: m.text,
       confidence: "high",
+      confirmed: false,
       start: m.start,
       end: m.end,
     });
@@ -172,6 +181,7 @@ export function extractFilters(text: string): ExtractedFilter[] {
         value: `Seniority: ${years}`,
         matchedText: m.text,
         confidence: "low",
+        confirmed: false,
         start: m.start,
         end: m.end,
       });
