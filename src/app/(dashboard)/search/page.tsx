@@ -26,6 +26,22 @@ import {
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { arrayMove } from "@dnd-kit/sortable";
+import {
+  DndContext,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 // ─── scoring ─────────────────────────────────────────────────────────────────
 
