@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { ArrowRight, MapPin, Clock, Pencil, X, Loader2, Plus, Briefcase, Star, Home, Building2, Languages, Sparkles, Check, TrendingUp, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,6 +16,13 @@ import {
   type FilterCategory,
 } from "@/lib/extract-filters";
 import { CANDIDATES, SUGGESTED_PROMPTS, type Candidate } from "@/lib/data";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -904,6 +911,8 @@ export default function SearchPage() {
   const [resultsLoading, setResultsLoading] = useState(false);
   const [lastSearch, setLastSearch] = useState<LastSearch | null>(() => loadLastSearch() ?? SEED_LAST_SEARCH);
   const [categoryOrder, setCategoryOrder] = useState<FilterCategory[]>(DEFAULT_CATEGORY_ORDER);
+  const [sortBy, setSortBy] = useState<"relevance" | "match" | "experience" | "name">("relevance");
+  const [quickFilter, setQuickFilter] = useState<"all" | "top1" | "top3" | "top5">("all");
 
   const handleReorder = useCallback((activeId: FilterCategory, overId: FilterCategory) => {
     setCategoryOrder((prev) => {
@@ -968,6 +977,7 @@ export default function SearchPage() {
     setHighlightsReady(false);
     setChipsLoading(false);
     setResultsLoading(false);
+    setQuickFilter("all");
 
     // 1. Highlights fade into the prompt text
     timers.current.push(setTimeout(() => setHighlightsReady(true), 350));
@@ -1052,6 +1062,7 @@ export default function SearchPage() {
     setHighlightsReady(false);
     setChipsLoading(false);
     setResultsLoading(false);
+    setQuickFilter("all");
   }
 
   function handleResume() {
@@ -1137,6 +1148,18 @@ export default function SearchPage() {
     }
     rerunResults(next);
   }
+
+  const sortedResults = useMemo(() => {
+    if (!results) return null;
+    const arr = [...results];
+    if (sortBy === "match") arr.sort((a, b) => b.candidate.matchScore - a.candidate.matchScore);
+    else if (sortBy === "experience") arr.sort((a, b) => b.candidate.experienceYears - a.candidate.experienceYears);
+    else if (sortBy === "name") arr.sort((a, b) => a.candidate.name.localeCompare(b.candidate.name));
+    return arr;
+  }, [results, sortBy]);
+
+  const quickFilterLimit = quickFilter === "top1" ? 1 : quickFilter === "top3" ? 3 : quickFilter === "top5" ? 5 : undefined;
+  const displayedResults = quickFilterLimit !== undefined ? sortedResults?.slice(0, quickFilterLimit) : sortedResults;
 
   const hasResults = results !== null;
   const isSearching = chipsLoading || resultsLoading;
@@ -1260,12 +1283,46 @@ export default function SearchPage() {
             ) : (
             <>
             <div className="flex items-center justify-between animate-in fade-in-0 duration-300">
-              <p className="text-sm font-medium">
-                {results!.length === 0
-                  ? "No matches found"
-                  : `${results!.length} candidate${results!.length !== 1 ? "s" : ""} found`}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium">
+                  {results!.length === 0
+                    ? "No matches found"
+                    : `${results!.length} found`}
+                </p>
+                {results!.length > 0 && (
+                  <Select value={sortBy} onValueChange={(v) => setSortBy((v ?? "relevance") as typeof sortBy)}>
+                    <SelectTrigger className="h-7 text-xs w-36 gap-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="relevance">Relevance</SelectItem>
+                      <SelectItem value="match">Match score</SelectItem>
+                      <SelectItem value="experience">Experience</SelectItem>
+                      <SelectItem value="name">Name</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
               <div className="flex items-center gap-1">
+                {results!.length > 0 && (
+                  <div className="inline-flex rounded-md border text-xs overflow-hidden shrink-0">
+                    {(["top1", "top3", "top5"] as const).map((v, i) => (
+                      <button
+                        key={v}
+                        onClick={() => setQuickFilter((prev) => prev === v ? "all" : v)}
+                        className={cn(
+                          "px-2.5 py-1 transition-colors",
+                          i > 0 && "border-l",
+                          quickFilter === v
+                            ? "bg-secondary text-secondary-foreground font-medium"
+                            : "text-muted-foreground hover:bg-muted"
+                        )}
+                      >
+                        {v === "top1" ? "Top Pick" : v === "top3" ? "Top 3" : "Top 5"}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <Button variant="ghost" size="sm" onClick={handleLoosen} className="gap-1.5 text-muted-foreground">
                   Loosen
                   <kbd className="text-[10px] opacity-50 font-sans">⌘[</kbd>
@@ -1285,7 +1342,7 @@ export default function SearchPage() {
               </Card>
             ) : (
               <div className="flex flex-col gap-3">
-                {results!.map(({ candidate, matchedTerms }, index) => (
+                {displayedResults!.map(({ candidate, matchedTerms }, index) => (
                   <Card
                     key={candidate.id}
                     className={cn(
