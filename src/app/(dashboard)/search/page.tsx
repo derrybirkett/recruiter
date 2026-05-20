@@ -1063,6 +1063,232 @@ function CandidateSummaryDialog({
   );
 }
 
+// ─── near-miss panel ──────────────────────────────────────────────────────────
+
+interface NearMiss {
+  candidate: Candidate;
+  score: number;
+  matchedTerms: string[];
+  failedFilter: ExtractedFilter;
+}
+
+function computeNearMisses(filters: ExtractedFilter[], terms: string[]): NearMiss[] {
+  return CANDIDATES.flatMap((candidate) => {
+    const scored = scoreCandidate(candidate, terms);
+    const failed = filters.filter((f) => !candidateMatchesFilter(candidate, f));
+    if (failed.length !== 1) return [];
+    return [{ candidate, score: scored.score, matchedTerms: scored.matchedTerms, failedFilter: failed[0] }];
+  }).sort((a, b) => b.score - a.score);
+}
+
+function computeTryWithout(
+  filters: ExtractedFilter[],
+  terms: string[]
+): Array<{ filter: ExtractedFilter; additionalCount: number }> {
+  return filters
+    .map((filter) => {
+      const rest = filters.filter((f) => f.id !== filter.id);
+      const additionalCount = CANDIDATES.filter((c) => {
+        const { score } = scoreCandidate(c, terms);
+        if (score === 0) return false;
+        return rest.every((f) => candidateMatchesFilter(c, f)) && !candidateMatchesFilter(c, filter);
+      }).length;
+      return { filter, additionalCount };
+    })
+    .filter((s) => s.additionalCount > 0)
+    .sort((a, b) => b.additionalCount - a.additionalCount);
+}
+
+function missedByLabel(filter: ExtractedFilter, candidate: Candidate): string {
+  switch (filter.category) {
+    case "EXPERIENCE": {
+      const req = parseInt(filter.value.match(/(\d+)/)?.[1] ?? "0");
+      const diff = req - candidate.experienceYears;
+      return diff > 0 ? `${diff} yr${diff !== 1 ? "s" : ""} exp` : "experience";
+    }
+    case "CITY": return "city";
+    case "WORK PREF": return "work pref";
+    case "SKILL": return filter.value.toLowerCase();
+    case "SENIORITY": return "seniority";
+    case "TITLE": return "title";
+    default: return filter.category.toLowerCase();
+  }
+}
+
+function nearMissChipText(filter: ExtractedFilter, candidate: Candidate, failed: boolean): string {
+  if (!failed) {
+    return filter.category === "SKILL" ? filter.value : `${CATEGORY_LABEL[filter.category]} · ${filter.value}`;
+  }
+  switch (filter.category) {
+    case "EXPERIENCE": {
+      const req = filter.value.match(/(\d+)/)?.[1] ?? "?";
+      return `YEARS · ${candidate.experienceYears} / ${req}+`;
+    }
+    case "CITY":
+      return `CITY · ${candidate.location.split(",")[0].trim()} / ${filter.value}`;
+    default:
+      return filter.category === "SKILL" ? filter.value : `${CATEGORY_LABEL[filter.category]} · ${filter.value}`;
+  }
+}
+
+function NearMissCard({
+  candidate,
+  failedFilter,
+  allFilters,
+}: {
+  candidate: Candidate;
+  failedFilter: ExtractedFilter;
+  allFilters: ExtractedFilter[];
+}) {
+  return (
+    <Card className="py-0">
+      <CardContent className="p-4 flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Avatar className="h-8 w-8 shrink-0">
+              <AvatarFallback className="text-xs">{candidate.initials}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="font-medium text-sm">{candidate.name}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {candidate.role} · {candidate.location} · {candidate.experienceYears} yrs
+              </p>
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-[9px] font-semibold uppercase tracking-widest text-red-500 mb-0.5">Missed by</p>
+            <p className="text-sm font-semibold text-red-500">{missedByLabel(failedFilter, candidate)}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {allFilters.map((filter) => {
+            const isFailed = filter.id === failedFilter.id;
+            return (
+              <div
+                key={filter.id}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-medium",
+                  isFailed
+                    ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-900/30 dark:border-red-800 dark:text-red-400"
+                    : "bg-green-50 border-green-300 text-green-800 dark:bg-green-900/30 dark:border-green-700 dark:text-green-400"
+                )}
+              >
+                {isFailed ? <X className="h-3 w-3 shrink-0" /> : <Check className="h-3 w-3 shrink-0" />}
+                <span>{nearMissChipText(filter, candidate, isFailed)}</span>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ZeroResultsPanel({
+  filters,
+  prompt,
+  onRemoveFilter,
+  onEdit,
+}: {
+  filters: ExtractedFilter[];
+  prompt: string;
+  onRemoveFilter: (id: string) => void;
+  onEdit: () => void;
+}) {
+  const [showAll, setShowAll] = useState(false);
+
+  const terms = useMemo(() => {
+    const promptTerms = extractTerms(prompt);
+    const filterTerms = filters.flatMap((f) => f.value.toLowerCase().split(/\s+/));
+    return [...new Set([...promptTerms, ...filterTerms])];
+  }, [prompt, filters]);
+
+  const nearMisses = useMemo(() => computeNearMisses(filters, terms), [filters, terms]);
+  const tryWithout = useMemo(() => computeTryWithout(filters, terms), [filters, terms]);
+
+  const SHOWN = 4;
+  const displayed = showAll ? nearMisses : nearMisses.slice(0, SHOWN);
+  const remaining = nearMisses.length - SHOWN;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="rounded-lg border px-4 py-3 flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm">
+            <span className="font-semibold">0 perfect matches</span>
+            {nearMisses.length > 0 && (
+              <>
+                <span className="text-muted-foreground">
+                  {" "}— but {nearMisses.length} candidate{nearMisses.length !== 1 ? "s" : ""}{" "}
+                  {nearMisses.length !== 1 ? "are" : "is"}{" "}
+                </span>
+                <span className="text-red-500 font-semibold">1 criterion away</span>
+              </>
+            )}
+          </p>
+          {nearMisses.length > 0 && tryWithout[0] && (
+            <button
+              onClick={() => onRemoveFilter(tryWithout[0].filter.id)}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            >
+              Loosen criteria to see them all →
+            </button>
+          )}
+        </div>
+        {tryWithout.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground shrink-0">
+              Try without:
+            </span>
+            {tryWithout.map(({ filter, additionalCount }) => (
+              <button
+                key={filter.id}
+                onClick={() => onRemoveFilter(filter.id)}
+                className="inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs hover:bg-accent transition-colors"
+              >
+                <span className="line-through text-muted-foreground">{filter.value}</span>
+                <span className="text-red-500 font-semibold">+{additionalCount}</span>
+              </button>
+            ))}
+            <button
+              onClick={onEdit}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              or edit prompt
+            </button>
+          </div>
+        )}
+      </div>
+
+      {nearMisses.length > 0 && (
+        <>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Near-misses · {nearMisses.length} candidate{nearMisses.length !== 1 ? "s" : ""} missing exactly one criterion — ranked by closeness
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {displayed.map(({ candidate, failedFilter }) => (
+              <NearMissCard
+                key={candidate.id}
+                candidate={candidate}
+                failedFilter={failedFilter}
+                allFilters={filters}
+              />
+            ))}
+          </div>
+          {!showAll && remaining > 0 && (
+            <button
+              onClick={() => setShowAll(true)}
+              className="text-sm text-left text-muted-foreground hover:text-foreground transition-colors"
+            >
+              + {remaining} more near-miss{remaining !== 1 ? "es" : ""}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 export default function SearchPage() {
@@ -1135,6 +1361,7 @@ export default function SearchPage() {
     const scored = CANDIDATES
       .map((c) => scoreCandidate(c, terms))
       .filter((r) => r.score > 0)
+      .filter((r) => filters.every((f) => candidateMatchesFilter(r.candidate, f)))
       .sort((a, b) => b.score - a.score);
     setResults(scored);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1269,6 +1496,7 @@ export default function SearchPage() {
       const scored = CANDIDATES
         .map((c) => scoreCandidate(c, terms))
         .filter((r) => r.score > 0)
+        .filter((r) => newFilters.every((f) => candidateMatchesFilter(r.candidate, f)))
         .sort((a, b) => b.score - a.score);
       setResults(scored);
       setResultsLoading(false);
@@ -1343,14 +1571,23 @@ export default function SearchPage() {
     <div className="flex flex-col flex-1 overflow-auto">
       <div className="max-w-3xl w-full mx-auto px-6 py-8 flex flex-col gap-4">
 
+        {/* Hero header — idle state only */}
+        {!hasResults && !isSearching && (
+          <div className="text-center pt-6 pb-2">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+              Find Candidates
+            </p>
+            <h1 className="text-3xl font-semibold tracking-tight">
+              Who are you looking for?
+            </h1>
+          </div>
+        )}
+
         {/* Prompt area */}
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between px-0.5">
-            <span className="text-sm text-muted-foreground">
-              Describe what you are looking for
-            </span>
             {!editMode && (
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-[11px] text-muted-foreground ml-auto">
                 ⌘E to edit · Esc to clear
               </span>
             )}
@@ -1457,70 +1694,61 @@ export default function SearchPage() {
               </div>
             ) : (
             <>
+            {results!.length > 0 && (
             <div className="flex items-center justify-between animate-in fade-in-0 duration-300">
               <div className="flex items-center gap-2">
-                <p className="text-sm font-medium">
-                  {results!.length === 0
-                    ? "No matches found"
-                    : `${results!.length} found`}
-                </p>
-                {results!.length > 0 && (
-                  <>
-                    <Select value={sortBy} onValueChange={(v) => setSortBy((v ?? "relevance") as typeof sortBy)}>
-                      <SelectTrigger className="h-7 text-xs w-36 gap-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="relevance">Relevance</SelectItem>
-                        <SelectItem value="match">Match score</SelectItem>
-                        <SelectItem value="experience">Experience</SelectItem>
-                        <SelectItem value="name">Name</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <div className="inline-flex rounded-md border overflow-hidden shrink-0">
-                      {(["list", "table", "grid"] as const).map((v, i) => {
-                        const Icon = v === "list" ? List : v === "table" ? Table2 : LayoutGrid;
-                        return (
-                          <button
-                            key={v}
-                            onClick={() => setView(v)}
-                            className={cn(
-                              "px-2 py-1 transition-colors",
-                              i > 0 && "border-l",
-                              view === v
-                                ? "bg-secondary text-secondary-foreground"
-                                : "text-muted-foreground hover:bg-muted"
-                            )}
-                            aria-label={`${v} view`}
-                          >
-                            <Icon className="h-3.5 w-3.5" />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                {results!.length > 0 && (
-                  <div className="inline-flex rounded-md border text-xs overflow-hidden shrink-0">
-                    {(["top1", "top3", "top5"] as const).map((v, i) => (
+                <p className="text-sm font-medium">{results!.length} found</p>
+                <Select value={sortBy} onValueChange={(v) => setSortBy((v ?? "relevance") as typeof sortBy)}>
+                  <SelectTrigger className="h-7 text-xs w-36 gap-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="relevance">Relevance</SelectItem>
+                    <SelectItem value="match">Match score</SelectItem>
+                    <SelectItem value="experience">Experience</SelectItem>
+                    <SelectItem value="name">Name</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="inline-flex rounded-md border overflow-hidden shrink-0">
+                  {(["list", "table", "grid"] as const).map((v, i) => {
+                    const Icon = v === "list" ? List : v === "table" ? Table2 : LayoutGrid;
+                    return (
                       <button
                         key={v}
-                        onClick={() => setQuickFilter((prev) => prev === v ? "all" : v)}
+                        onClick={() => setView(v)}
                         className={cn(
-                          "px-2.5 py-1 transition-colors",
+                          "px-2 py-1 transition-colors",
                           i > 0 && "border-l",
-                          quickFilter === v
-                            ? "bg-secondary text-secondary-foreground font-medium"
+                          view === v
+                            ? "bg-secondary text-secondary-foreground"
                             : "text-muted-foreground hover:bg-muted"
                         )}
+                        aria-label={`${v} view`}
                       >
-                        {v === "top1" ? "Top Pick" : v === "top3" ? "Top 3" : "Top 5"}
+                        <Icon className="h-3.5 w-3.5" />
                       </button>
-                    ))}
-                  </div>
-                )}
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="inline-flex rounded-md border text-xs overflow-hidden shrink-0">
+                  {(["top1", "top3", "top5"] as const).map((v, i) => (
+                    <button
+                      key={v}
+                      onClick={() => setQuickFilter((prev) => prev === v ? "all" : v)}
+                      className={cn(
+                        "px-2.5 py-1 transition-colors",
+                        i > 0 && "border-l",
+                        quickFilter === v
+                          ? "bg-secondary text-secondary-foreground font-medium"
+                          : "text-muted-foreground hover:bg-muted"
+                      )}
+                    >
+                      {v === "top1" ? "Top Pick" : v === "top3" ? "Top 3" : "Top 5"}
+                    </button>
+                  ))}
+                </div>
                 <Button variant="ghost" size="sm" onClick={handleLoosen} className="gap-1.5 text-muted-foreground">
                   Loosen
                   <kbd className="text-[10px] opacity-50 font-sans">⌘[</kbd>
@@ -1531,13 +1759,15 @@ export default function SearchPage() {
                 </Button>
               </div>
             </div>
+            )}
 
             {results!.length === 0 ? (
-              <Card>
-                <CardContent className="py-10 text-center text-muted-foreground text-sm">
-                  Try broadening your search — fewer keywords often return more results.
-                </CardContent>
-              </Card>
+              <ZeroResultsPanel
+                filters={filters}
+                prompt={prompt}
+                onRemoveFilter={handleDismissFilter}
+                onEdit={() => setEditMode(true)}
+              />
             ) : view === "table" ? (
               <div className="rounded-lg border overflow-hidden">
                 <Table>

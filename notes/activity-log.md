@@ -1,3 +1,14 @@
+## 2026-05-20 | Session Wrap-Up (4)
+
+**Version:** v1.6.0
+**Commits:**
+- feat: sort dropdown and quick filter toggle for search results
+- feat: view toggles, rank badges, AI summary dialog, semantic skill tags, and bookmark on search results
+
+Heavy UI session on the search results area. Added a sort dropdown (Relevance / Match score / Experience / Name) and a segmented Top Pick / Top 3 / Top 5 quick filter toggle. Added a list / table / grid view switcher with icon buttons. Rank badges (Top Pick with star, Top 3, Top 5) appear on candidates in all three views. A purple "Summarise" button triggers an AI Analysis dialog per candidate with an overview, strengths, considerations, and a recommendation — all template-generated from the candidate's real data. Skill badges in table and grid views use semantic green colouring for matched skills. A bookmark toggle button sits next to the match score. Manually selecting a filter chip value now confirms it (turns white). Card group py-0 to remove default vertical padding.
+
+---
+
 ## 2026-05-20 | Session Wrap-Up (3)
 
 **Version:** v1.4.0
