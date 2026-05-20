@@ -1,3 +1,13 @@
+## 2026-05-20 | Session Wrap-Up (5)
+
+**Version:** v1.7.0
+**Commits:**
+- feat: hero header, near-miss panel with try-without chips, sidebar polish, and hard filter matching for tighten/loosen
+
+Polish and zero-results intelligence session. Removed the breadcrumb bar and sidebar drawer toggle from the dashboard layout, and stripped the sidebar rail's dividing border and grey background for a cleaner chrome-free look. Added a hero header to the search page ("FIND CANDIDATES / Who are you looking for?") that appears only in the idle state. Fixed tighten/loosen so the result count actually changes — `rerunResults` and the chip-edit `useEffect` now apply `candidateMatchesFilter` as a hard gate alongside scoring. Built a full zero-results experience: a `ZeroResultsPanel` replaces the empty-state card when matches = 0, showing a "0 perfect matches — N candidates are 1 criterion away" banner, "Try without" chips per filter with a live +N candidate count, and a 2-column near-miss grid of candidates who miss exactly one criterion — each card shows a "MISSED BY" label and ✓/✗ chips with actual/required values (e.g. `YEARS · 4 / 5+`, `CITY · Munich / Berlin`).
+
+---
+
 ## 2026-05-20 | Session Wrap-Up (4)
 
 **Version:** v1.6.0
