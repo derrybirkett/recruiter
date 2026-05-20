@@ -25,6 +25,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
+import { arrayMove } from "@dnd-kit/sortable";
 
 // ─── scoring ─────────────────────────────────────────────────────────────────
 
@@ -139,6 +140,11 @@ const CATEGORY_ORDER: Partial<Record<FilterCategory, number>> = {
   TITLE: 0, SKILL: 1, EXPERIENCE: 2, CITY: 3,
   "WORK PREF": 4, INDUSTRY: 5, LANGUAGE: 6, "LAST ACTIVE": 7, SENIORITY: 8, INFERRED: 9,
 };
+
+const DEFAULT_CATEGORY_ORDER: FilterCategory[] = [
+  "TITLE", "SKILL", "EXPERIENCE", "CITY",
+  "WORK PREF", "INDUSTRY", "LANGUAGE", "LAST ACTIVE", "SENIORITY", "INFERRED",
+];
 
 function CandidateFilterChips({
   filters,
@@ -800,6 +806,16 @@ export default function SearchPage() {
   const [chipsLoading, setChipsLoading] = useState(false);
   const [resultsLoading, setResultsLoading] = useState(false);
   const [lastSearch, setLastSearch] = useState<LastSearch | null>(() => loadLastSearch() ?? SEED_LAST_SEARCH);
+  const [categoryOrder, setCategoryOrder] = useState<FilterCategory[]>(DEFAULT_CATEGORY_ORDER);
+
+  function handleReorder(activeId: FilterCategory, overId: FilterCategory) {
+    setCategoryOrder((prev) => {
+      const from = prev.indexOf(activeId);
+      const to = prev.indexOf(overId);
+      return from === -1 || to === -1 ? prev : arrayMove(prev, from, to);
+    });
+  }
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -1091,6 +1107,8 @@ export default function SearchPage() {
               <ChipBar
                 filters={filters}
                 confirmed={confirmed}
+                categoryOrder={categoryOrder}
+                onReorder={handleReorder}
                 onDismiss={handleDismissFilter}
                 onConfirm={(id) => setFilters((f) => f.map((x) => x.id === id ? { ...x, confirmed: true } : x))}
                 onUpdate={handleUpdate}
@@ -1108,6 +1126,7 @@ export default function SearchPage() {
             {lastSearch && (
               <LastSearchBanner
                 lastSearch={lastSearch}
+                categoryOrder={categoryOrder}
                 onResume={handleResume}
               />
             )}
@@ -1202,11 +1221,12 @@ export default function SearchPage() {
                       </div>
                     </CardHeader>
                     <CardContent className="px-4 pb-4 flex flex-col gap-3">
-                      <p className="text-sm text-muted-foreground">{highlightSummary(candidate.summary, matchedTerms)}</p>
+                      <p className="text-sm text-foreground">{highlightSummary(candidate.summary, matchedTerms)}</p>
 
                       <CandidateFilterChips
                         filters={filters}
                         candidate={candidate}
+                        categoryOrder={categoryOrder}
                         onAdd={handleAddFilter}
                         onDismiss={handleDismissFilter}
                       />
