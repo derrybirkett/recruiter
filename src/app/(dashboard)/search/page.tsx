@@ -784,6 +784,10 @@ function LastSearchBanner({
   );
 }
 
+// Ordered loosest → tightest for each adjustable dimension
+const EXPERIENCE_SCALE = FILTER_VALUE_OPTIONS.EXPERIENCE; // "0–1 yrs" … "10+ yrs"
+const LAST_ACTIVE_SCALE = FILTER_VALUE_OPTIONS["LAST ACTIVE"]; // "Past week" … "Past 6 months"
+
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 export default function SearchPage() {
@@ -810,6 +814,14 @@ export default function SearchPage() {
       if ((e.metaKey || e.ctrlKey) && e.key === "e" && !editMode) {
         e.preventDefault();
         setEditMode(true);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "]" && hasResults) {
+        e.preventDefault();
+        handleTighten();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "[" && hasResults) {
+        e.preventDefault();
+        handleLoosen();
       }
       if (e.key === "Escape") handleReset();
     }
@@ -948,6 +960,71 @@ export default function SearchPage() {
     setResultsLoading(false);
   }
 
+  function rerunResults(newFilters: ExtractedFilter[]) {
+    setResultsLoading(true);
+    setFilters(newFilters);
+    const t = setTimeout(() => {
+      const promptTerms = extractTerms(prompt);
+      const filterTerms = newFilters.flatMap((f) => f.value.toLowerCase().split(/\s+/));
+      const terms = [...new Set([...promptTerms, ...filterTerms])];
+      const scored = CANDIDATES
+        .map((c) => scoreCandidate(c, terms))
+        .filter((r) => r.score > 0)
+        .sort((a, b) => b.score - a.score);
+      setResults(scored);
+      setResultsLoading(false);
+    }, 600);
+    timers.current.push(t);
+  }
+
+  function handleTighten() {
+    let next = [...filters];
+    // Experience: move one step stricter, or add at lowest level
+    const expIdx = next.findIndex((f) => f.category === "EXPERIENCE");
+    if (expIdx !== -1) {
+      const scale = EXPERIENCE_SCALE.indexOf(next[expIdx].value);
+      const newVal = EXPERIENCE_SCALE[Math.min(EXPERIENCE_SCALE.length - 1, scale + 1)];
+      next = next.map((f, i) => i === expIdx ? { ...f, value: newVal, confirmed: true } : f);
+    } else {
+      next = [...next, { id: `tj-exp-${Date.now()}`, category: "EXPERIENCE", value: "2–4 yrs", matchedText: "", confidence: "high" as const, confirmed: true, start: 0, end: 0 }];
+    }
+    // Last active: move one step stricter (toward "Past week"), or add "Past month"
+    const laIdx = next.findIndex((f) => f.category === "LAST ACTIVE");
+    if (laIdx !== -1) {
+      const scale = LAST_ACTIVE_SCALE.indexOf(next[laIdx].value);
+      const newVal = LAST_ACTIVE_SCALE[Math.max(0, scale - 1)];
+      next = next.map((f, i) => i === laIdx ? { ...f, value: newVal, confirmed: true } : f);
+    } else {
+      next = [...next, { id: `tj-la-${Date.now()}`, category: "LAST ACTIVE", value: "Past month", matchedText: "", confidence: "high" as const, confirmed: true, start: 0, end: 0 }];
+    }
+    rerunResults(next);
+  }
+
+  function handleLoosen() {
+    let next = [...filters];
+    // Experience: move one step looser, remove at loosest
+    const expIdx = next.findIndex((f) => f.category === "EXPERIENCE");
+    if (expIdx !== -1) {
+      const scale = EXPERIENCE_SCALE.indexOf(next[expIdx].value);
+      if (scale <= 0) {
+        next = next.filter((_, i) => i !== expIdx);
+      } else {
+        next = next.map((f, i) => i === expIdx ? { ...f, value: EXPERIENCE_SCALE[scale - 1], confirmed: true } : f);
+      }
+    }
+    // Last active: move one step looser (toward "Past 6 months"), remove at loosest
+    const laIdx = next.findIndex((f) => f.category === "LAST ACTIVE");
+    if (laIdx !== -1) {
+      const scale = LAST_ACTIVE_SCALE.indexOf(next[laIdx].value);
+      if (scale >= LAST_ACTIVE_SCALE.length - 1) {
+        next = next.filter((_, i) => i !== laIdx);
+      } else {
+        next = next.map((f, i) => i === laIdx ? { ...f, value: LAST_ACTIVE_SCALE[scale + 1], confirmed: true } : f);
+      }
+    }
+    rerunResults(next);
+  }
+
   const hasResults = results !== null;
   const isSearching = chipsLoading || resultsLoading;
 
@@ -1072,9 +1149,16 @@ export default function SearchPage() {
                   ? "No matches found"
                   : `${results!.length} candidate${results!.length !== 1 ? "s" : ""} found`}
               </p>
-              <Button variant="ghost" size="sm" onClick={handleReset}>
-                Clear
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" onClick={handleLoosen} className="gap-1.5 text-muted-foreground">
+                  Loosen
+                  <kbd className="text-[10px] opacity-50 font-sans">⌘[</kbd>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={handleTighten} className="gap-1.5 text-muted-foreground">
+                  Tighten
+                  <kbd className="text-[10px] opacity-50 font-sans">⌘]</kbd>
+                </Button>
+              </div>
             </div>
 
             {results!.length === 0 ? (
