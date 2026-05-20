@@ -646,6 +646,13 @@ function ChipBar({
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
   );
 
+  const groupedByCategory = filters.reduce<Partial<Record<FilterCategory, ExtractedFilter[]>>>((acc, f) => {
+    (acc[f.category] ??= []).push(f);
+    return acc;
+  }, {});
+
+  const orderedCategories = categoryOrder.filter((cat) => cat in groupedByCategory);
+
   if (filters.length === 0) return null;
 
   return (
@@ -673,28 +680,55 @@ function ChipBar({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {Object.entries(
-          filters.reduce<Partial<Record<FilterCategory, ExtractedFilter[]>>>((acc, f) => {
-            (acc[f.category] ??= []).push(f);
-            return acc;
-          }, {})
-        )
-          .sort(([a], [b]) => {
-            const ai = categoryOrder.indexOf(a as FilterCategory);
-            const bi = categoryOrder.indexOf(b as FilterCategory);
-            return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-          })
-          .map(([, group]) => {
-            const g = group!;
+      <DndContext
+        sensors={sensors}
+        onDragStart={({ active }: DragStartEvent) => setActiveCategory(active.id as FilterCategory)}
+        onDragEnd={({ active, over }: DragEndEvent) => {
+          setActiveCategory(null);
+          if (over && active.id !== over.id) {
+            onReorder(active.id as FilterCategory, over.id as FilterCategory);
+          }
+        }}
+        onDragCancel={() => setActiveCategory(null)}
+      >
+        <SortableContext
+          items={orderedCategories}
+          strategy={horizontalListSortingStrategy}
+        >
+          <div className="flex flex-wrap gap-2">
+            {orderedCategories.map((category) => {
+              const g = groupedByCategory[category];
+              if (!g) return null;
+              return (
+                <SortableChipWrapper key={category} id={category}>
+                  {g.length === 1 ? (
+                    <FilterChip filter={g[0]} onDismiss={onDismiss} onConfirm={onConfirm} onUpdate={onUpdate} />
+                  ) : (
+                    <GroupedFilterChip filters={g} onDismiss={onDismiss} onConfirm={onConfirm} onUpdate={onUpdate} onAdd={onAdd} />
+                  )}
+                </SortableChipWrapper>
+              );
+            })}
+            <AddFilterChip onAdd={onAdd} activeFilters={filters} />
+          </div>
+        </SortableContext>
+
+        <DragOverlay>
+          {activeCategory && (() => {
+            const g = groupedByCategory[activeCategory];
+            if (!g) return null;
             return g.length === 1 ? (
-              <FilterChip key={g[0].id} filter={g[0]} onDismiss={onDismiss} onConfirm={onConfirm} onUpdate={onUpdate} />
+              <div className="shadow-lg rounded-full opacity-100">
+                <FilterChip filter={g[0]} onDismiss={() => {}} onConfirm={() => {}} onUpdate={() => {}} />
+              </div>
             ) : (
-              <GroupedFilterChip key={g[0].category} filters={g} onDismiss={onDismiss} onConfirm={onConfirm} onUpdate={onUpdate} onAdd={onAdd} />
+              <div className="shadow-lg rounded-full opacity-100">
+                <GroupedFilterChip filters={g} onDismiss={() => {}} onConfirm={() => {}} onUpdate={() => {}} onAdd={() => {}} />
+              </div>
             );
-          })}
-        <AddFilterChip onAdd={onAdd} activeFilters={filters} />
-      </div>
+          })()}
+        </DragOverlay>
+      </DndContext>
     </div>
   );
 }
