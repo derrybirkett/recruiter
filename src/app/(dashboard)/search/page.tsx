@@ -1,11 +1,27 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { ArrowRight, MapPin, Clock, Pencil, X, Loader2, Plus, Briefcase, Star, Home, Building2, Languages, Sparkles, Check, TrendingUp, CalendarDays } from "lucide-react";
+import { ArrowRight, MapPin, Clock, Pencil, X, Loader2, Plus, Briefcase, Star, Home, Building2, Languages, Sparkles, Check, TrendingUp, CalendarDays, Bookmark, List, Table2, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -898,6 +914,155 @@ function LastSearchBanner({
 const EXPERIENCE_SCALE = FILTER_VALUE_OPTIONS.EXPERIENCE; // "0–1 yrs" … "10+ yrs"
 const LAST_ACTIVE_SCALE = FILTER_VALUE_OPTIONS["LAST ACTIVE"]; // "Past week" … "Past 6 months"
 
+function RankBadge({ index }: { index: number }) {
+  if (index === 0)
+    return (
+      <Badge variant="default" className="text-[10px] px-1.5 h-4 gap-0.5 py-0">
+        <Star className="h-2.5 w-2.5" />
+        Top Pick
+      </Badge>
+    );
+  if (index <= 2)
+    return <Badge variant="secondary" className="text-[10px] px-1.5 h-4 py-0">Top 3</Badge>;
+  if (index <= 4)
+    return <Badge variant="outline" className="text-[10px] px-1.5 h-4 py-0">Top 5</Badge>;
+  return null;
+}
+
+// ─── AI summary dialog ───────────────────────────────────────────────────────
+
+function generateAIAnalysis(candidate: Candidate) {
+  const { name, role, skills, experienceYears, location, matchScore } = candidate;
+  const first = name.split(" ")[0];
+  const seniority =
+    experienceYears >= 8 ? "senior" : experienceYears >= 4 ? "mid-to-senior" : experienceYears >= 2 ? "mid-level" : "early-career";
+  const [s1, s2, s3] = skills;
+
+  const overview =
+    matchScore >= 85
+      ? `${name} is among the strongest candidates in this pipeline. Their ${experienceYears}-year track record as a ${role} puts them firmly in ${seniority} territory, and their hands-on proficiency in ${s1}${s2 ? ` and ${s2}` : ""} directly addresses the core technical requirements. Their ${location} base and current availability make them a low-friction choice to move quickly on.`
+      : matchScore >= 70
+      ? `${name} is a solid contender. A ${seniority} ${role} with proven ${s1} experience, they bring the kind of well-rounded technical profile that performs well across a range of engineering challenges. A few areas fall slightly outside the ideal specification, but the overall signal is clearly positive.`
+      : `${name} is worth a closer look. While not a perfect match on all dimensions, their background in ${s1}${s2 ? ` and ${s2}` : ""} is genuinely relevant and their ${experienceYears} years of experience suggest they can operate with meaningful autonomy. Some ramp-up time should be expected on areas outside their core stack.`;
+
+  const strengths: string[] = [
+    `${experienceYears} years in ${role} — deep enough to handle ambiguity and contribute from day one.`,
+    s1 && s2
+      ? `Core proficiency in both ${s1} and ${s2}, which are direct requirements for this search.`
+      : `Strong ${s1} expertise, which sits at the heart of this role's technical demands.`,
+    skills.length >= 4
+      ? `Broad skill surface across ${skills.slice(0, 4).join(", ")} — reduces onboarding risk and enables cross-functional collaboration.`
+      : `Focused technical profile with clear depth in the areas that matter most.`,
+    s3 ? `Experience with ${s3} signals versatility beyond the core requirement and suggests adaptability to the team's evolving tooling.` : `Consistent track record in a specialised domain — less likely to context-switch poorly under pressure.`,
+  ];
+
+  const considerations: string[] = [
+    experienceYears < 3
+      ? "Relatively early in their career — would benefit from a structured onboarding plan and clear growth milestones alongside a senior mentor."
+      : experienceYears > 12
+      ? "Extensive seniority may mean salary expectations exceed the advertised band. Worth a candid, early conversation to align on compensation."
+      : "Experience level aligns well with the role; unlikely to be a sticking point in offer negotiations.",
+    location === "Remote"
+      ? "Fully remote — confirm timezone overlap hours and async communication expectations before progressing to final stages."
+      : `Based in ${location}. Clarify whether hybrid attendance or occasional travel is expected to avoid late-stage misalignment.`,
+  ];
+
+  const recommendation =
+    matchScore >= 85
+      ? `Prioritise ${first} for a first-round interview this week. Their profile is among the strongest in the current pipeline and delay risks losing them to a competing offer.`
+      : matchScore >= 70
+      ? `Schedule a screening call with ${first} within the next few days. Their technical background warrants direct evaluation — a focused 30-minute call should quickly clarify fit.`
+      : `Flag ${first} as a secondary candidate. They may become more relevant if the top-tier pool doesn't convert, or if the role requirements shift during the search.`;
+
+  const verdict = matchScore >= 85 ? "Strong Match" : matchScore >= 70 ? "Good Fit" : "Backup Pick";
+
+  return { overview, strengths, considerations, recommendation, verdict };
+}
+
+function CandidateSummaryDialog({
+  candidate,
+  matchedTerms: _matchedTerms,
+}: {
+  candidate: Candidate;
+  matchedTerms: string[];
+}) {
+  const analysis = generateAIAnalysis(candidate);
+
+  return (
+    <Dialog>
+      <DialogTrigger
+        render={
+          <button
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 rounded-full bg-purple-100 border border-purple-300 text-purple-700 px-2 py-0.5 text-xs font-medium hover:bg-purple-200 transition-colors dark:bg-purple-900/30 dark:border-purple-700 dark:text-purple-400 dark:hover:bg-purple-800/40 shrink-0"
+          />
+        }
+      >
+        <Sparkles className="h-3 w-3" />
+        Summarise
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <div className="flex items-center gap-2.5 pr-8">
+            <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-purple-100 border border-purple-200 shrink-0">
+              <Sparkles className="h-3.5 w-3.5 text-purple-600" />
+            </span>
+            <div className="min-w-0">
+              <DialogTitle>AI Analysis</DialogTitle>
+              <p className="text-xs text-muted-foreground mt-0.5 truncate">{candidate.name} · {candidate.role}</p>
+            </div>
+            <span className={cn(
+              "ml-auto text-xs font-semibold px-2 py-0.5 rounded-full border shrink-0",
+              candidate.matchScore >= 85
+                ? "bg-green-50 border-green-300 text-green-700 dark:bg-green-900/30 dark:border-green-700 dark:text-green-400"
+                : candidate.matchScore >= 70
+                ? "bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-400"
+                : "bg-secondary border-border text-muted-foreground"
+            )}>
+              {analysis.verdict}
+            </span>
+          </div>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-4 text-sm">
+          <p className="text-foreground leading-relaxed">{analysis.overview}</p>
+
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Strengths</p>
+            <ul className="flex flex-col gap-1.5">
+              {analysis.strengths.map((s, i) => (
+                <li key={i} className="flex gap-2">
+                  <Check className="h-3.5 w-3.5 text-green-600 mt-0.5 shrink-0" />
+                  <span>{s}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Considerations</p>
+            <ul className="flex flex-col gap-1.5">
+              {analysis.considerations.map((c, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500 font-bold text-[11px] leading-none flex items-center">!</span>
+                  <span className="text-muted-foreground">{c}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-lg bg-purple-50 border border-purple-200 dark:bg-purple-900/20 dark:border-purple-800 px-3 py-2.5">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-purple-600 dark:text-purple-400 mb-1.5">Recommendation</p>
+            <p className="text-foreground leading-relaxed">{analysis.recommendation}</p>
+          </div>
+        </div>
+
+        <DialogFooter showCloseButton />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 export default function SearchPage() {
@@ -913,6 +1078,16 @@ export default function SearchPage() {
   const [categoryOrder, setCategoryOrder] = useState<FilterCategory[]>(DEFAULT_CATEGORY_ORDER);
   const [sortBy, setSortBy] = useState<"relevance" | "match" | "experience" | "name">("relevance");
   const [quickFilter, setQuickFilter] = useState<"all" | "top1" | "top3" | "top5">("all");
+  const [view, setView] = useState<"list" | "table" | "grid">("list");
+  const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
+
+  function toggleBookmark(id: string) {
+    setBookmarked((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   const handleReorder = useCallback((activeId: FilterCategory, overId: FilterCategory) => {
     setCategoryOrder((prev) => {
@@ -1031,7 +1206,7 @@ export default function SearchPage() {
     setFilters((prev) =>
       prev.map((f) => {
         if (f.id === id)
-          return { ...f, value: newValue, matchedText: newValue, end: filter.start + newValue.length };
+          return { ...f, value: newValue, matchedText: newValue, end: filter.start + newValue.length, confirmed: true };
         if (f.start >= filter.end)
           return { ...f, start: f.start + diff, end: f.end + diff };
         return f;
@@ -1290,17 +1465,40 @@ export default function SearchPage() {
                     : `${results!.length} found`}
                 </p>
                 {results!.length > 0 && (
-                  <Select value={sortBy} onValueChange={(v) => setSortBy((v ?? "relevance") as typeof sortBy)}>
-                    <SelectTrigger className="h-7 text-xs w-36 gap-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="relevance">Relevance</SelectItem>
-                      <SelectItem value="match">Match score</SelectItem>
-                      <SelectItem value="experience">Experience</SelectItem>
-                      <SelectItem value="name">Name</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <>
+                    <Select value={sortBy} onValueChange={(v) => setSortBy((v ?? "relevance") as typeof sortBy)}>
+                      <SelectTrigger className="h-7 text-xs w-36 gap-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="relevance">Relevance</SelectItem>
+                        <SelectItem value="match">Match score</SelectItem>
+                        <SelectItem value="experience">Experience</SelectItem>
+                        <SelectItem value="name">Name</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="inline-flex rounded-md border overflow-hidden shrink-0">
+                      {(["list", "table", "grid"] as const).map((v, i) => {
+                        const Icon = v === "list" ? List : v === "table" ? Table2 : LayoutGrid;
+                        return (
+                          <button
+                            key={v}
+                            onClick={() => setView(v)}
+                            className={cn(
+                              "px-2 py-1 transition-colors",
+                              i > 0 && "border-l",
+                              view === v
+                                ? "bg-secondary text-secondary-foreground"
+                                : "text-muted-foreground hover:bg-muted"
+                            )}
+                            aria-label={`${v} view`}
+                          >
+                            <Icon className="h-3.5 w-3.5" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
               </div>
               <div className="flex items-center gap-1">
@@ -1340,13 +1538,167 @@ export default function SearchPage() {
                   Try broadening your search — fewer keywords often return more results.
                 </CardContent>
               </Card>
+            ) : view === "table" ? (
+              <div className="rounded-lg border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-56">Candidate</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Location</TableHead>
+                      <TableHead>Exp</TableHead>
+                      <TableHead>Skills</TableHead>
+                      <TableHead>Match</TableHead>
+                      <TableHead className="w-10" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {displayedResults!.map(({ candidate, matchedTerms }, index) => {
+                      const skillFilters = filters.filter((f) => f.category === "SKILL");
+                      const isSkillMatched = (skill: string) =>
+                        matchedTerms.some((t) => skill.toLowerCase().includes(t)) ||
+                        skillFilters.some(
+                          (f) =>
+                            skill.toLowerCase().includes(f.value.toLowerCase()) ||
+                            f.value.toLowerCase().includes(skill.toLowerCase())
+                        );
+                      return (
+                      <TableRow key={candidate.id} className="cursor-pointer">
+                        <TableCell>
+                          <div className="flex items-center gap-2.5">
+                            <Avatar className="h-7 w-7 shrink-0">
+                              <AvatarFallback className="text-xs">{candidate.initials}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                              <span className="font-medium text-sm">{candidate.name}</span>
+                              <RankBadge index={index} />
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{candidate.role}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{candidate.location}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{candidate.experienceYears}y</TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            {candidate.skills.slice(0, 2).map((s) => (
+                              <Badge
+                                key={s}
+                                variant="outline"
+                                className={cn(
+                                  "text-xs font-normal",
+                                  isSkillMatched(s)
+                                    ? "bg-green-50 border-green-300 text-green-800 dark:bg-green-900/30 dark:border-green-700 dark:text-green-400"
+                                    : "text-muted-foreground"
+                                )}
+                              >
+                                {s}
+                              </Badge>
+                            ))}
+                            {candidate.skills.length > 2 && (
+                              <Badge variant="outline" className="text-xs font-normal text-muted-foreground">+{candidate.skills.length - 2}</Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5">
+                            <CandidateSummaryDialog candidate={candidate} matchedTerms={matchedTerms} />
+                            <Badge variant="outline" className="font-mono bg-green-50 border-green-300 text-green-800 dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
+                              {candidate.matchScore}%
+                            </Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleBookmark(candidate.id); }}
+                            className={cn("h-6 w-6 flex items-center justify-center rounded transition-colors hover:bg-accent", bookmarked.has(candidate.id) ? "text-foreground" : "text-muted-foreground")}
+                            aria-label={bookmarked.has(candidate.id) ? "Remove bookmark" : "Bookmark"}
+                          >
+                            <Bookmark className={cn("h-3.5 w-3.5", bookmarked.has(candidate.id) && "fill-current")} />
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                    ); })}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : view === "grid" ? (
+              <div className="grid grid-cols-2 gap-3">
+                {displayedResults!.map(({ candidate, matchedTerms }, index) => {
+                  const skillFilters = filters.filter((f) => f.category === "SKILL");
+                  const isSkillMatched = (skill: string) =>
+                    matchedTerms.some((t) => skill.toLowerCase().includes(t)) ||
+                    skillFilters.some(
+                      (f) =>
+                        skill.toLowerCase().includes(f.value.toLowerCase()) ||
+                        f.value.toLowerCase().includes(skill.toLowerCase())
+                    );
+                  return (
+                  <Card
+                    key={candidate.id}
+                    className={cn(
+                      "cursor-pointer hover:bg-accent/50 transition-colors animate-in fade-in-0 slide-in-from-bottom-2 duration-300",
+                      candidate.matchScore > 90 && "border-green-400 dark:border-green-600"
+                    )}
+                    style={{ animationDelay: `${index * 40}ms`, animationFillMode: "both" }}
+                  >
+                    <CardContent className="p-4 flex flex-col gap-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Avatar className="h-8 w-8 shrink-0">
+                            <AvatarFallback className="text-sm">{candidate.initials}</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-medium text-sm">{candidate.name}</p>
+                              <RankBadge index={index} />
+                            </div>
+                            <p className="text-xs text-muted-foreground">{candidate.role}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <CandidateSummaryDialog candidate={candidate} matchedTerms={matchedTerms} />
+                          <Badge variant="outline" className="font-mono text-xs bg-green-50 border-green-300 text-green-800 dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
+                            {candidate.matchScore}%
+                          </Badge>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleBookmark(candidate.id); }}
+                            className={cn("h-6 w-6 flex items-center justify-center rounded transition-colors hover:bg-accent", bookmarked.has(candidate.id) ? "text-foreground" : "text-muted-foreground")}
+                            aria-label={bookmarked.has(candidate.id) ? "Remove bookmark" : "Bookmark"}
+                          >
+                            <Bookmark className={cn("h-3.5 w-3.5", bookmarked.has(candidate.id) && "fill-current")} />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex gap-1 flex-wrap">
+                        {candidate.skills.slice(0, 3).map((s) => (
+                          <Badge
+                            key={s}
+                            variant="outline"
+                            className={cn(
+                              "text-xs font-normal",
+                              isSkillMatched(s)
+                                ? "bg-green-50 border-green-300 text-green-800 dark:bg-green-900/30 dark:border-green-700 dark:text-green-400"
+                                : "text-muted-foreground"
+                            )}
+                          >
+                            {s}
+                          </Badge>
+                        ))}
+                        {candidate.skills.length > 3 && (
+                          <Badge variant="outline" className="text-xs font-normal text-muted-foreground">+{candidate.skills.length - 3}</Badge>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  ); })}
+              </div>
             ) : (
               <div className="flex flex-col gap-3">
                 {displayedResults!.map(({ candidate, matchedTerms }, index) => (
                   <Card
                     key={candidate.id}
                     className={cn(
-                      "cursor-pointer hover:bg-accent/50 transition-colors animate-in fade-in-0 slide-in-from-bottom-2 duration-300",
+                      "cursor-pointer hover:bg-accent/50 transition-colors animate-in fade-in-0 slide-in-from-bottom-2 duration-300 py-0",
                       candidate.matchScore > 90 && "border-green-400 dark:border-green-600"
                     )}
                     style={{ animationDelay: `${index * 40}ms`, animationFillMode: "both" }}
@@ -1360,23 +1712,36 @@ export default function SearchPage() {
                             </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0">
-                            <p className="font-medium text-sm">{candidate.name}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-medium text-sm">{candidate.name}</p>
+                              <RankBadge index={index} />
+                            </div>
                             <p className="text-sm text-muted-foreground">{candidate.role}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <CandidateSummaryDialog candidate={candidate} matchedTerms={matchedTerms} />
                           <Badge
                             variant="outline"
                             className="font-mono bg-green-50 border-green-300 text-green-800 dark:bg-green-900/30 dark:border-green-700 dark:text-green-400"
                           >
                             {candidate.matchScore}%
                           </Badge>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleBookmark(candidate.id); }}
+                            className={cn(
+                              "h-6 w-6 flex items-center justify-center rounded transition-colors hover:bg-accent",
+                              bookmarked.has(candidate.id) ? "text-foreground" : "text-muted-foreground"
+                            )}
+                            aria-label={bookmarked.has(candidate.id) ? "Remove bookmark" : "Bookmark candidate"}
+                          >
+                            <Bookmark className={cn("h-3.5 w-3.5", bookmarked.has(candidate.id) && "fill-current")} />
+                          </button>
                         </div>
                       </div>
                     </CardHeader>
                     <CardContent className="px-4 pb-4 flex flex-col gap-3">
                       <p className="text-sm text-foreground">{highlightSummary(candidate.summary, matchedTerms)}</p>
-
                       <CandidateFilterChips
                         filters={filters}
                         candidate={candidate}
@@ -1384,7 +1749,6 @@ export default function SearchPage() {
                         onAdd={handleAddFilter}
                         onDismiss={handleDismissFilter}
                       />
-
                     </CardContent>
                   </Card>
                 ))}
