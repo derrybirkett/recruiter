@@ -7,6 +7,7 @@ export type FilterCategory =
   | "LANGUAGE"
   | "SENIORITY"
   | "EXPERIENCE"
+  | "LAST ACTIVE"
   | "INFERRED";
 
 export interface ExtractedFilter {

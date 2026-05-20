@@ -128,28 +128,37 @@ function candidateMatchesFilter(candidate: Candidate, filter: ExtractedFilter): 
       const m = v.match(/(\d+)/);
       return m ? candidate.experienceYears >= parseInt(m[1]) : false;
     }
+    case "LAST ACTIVE":
+      return true; // no last-active field in dummy data — treat all as matching
     default:
       return false;
   }
 }
 
 const CATEGORY_ORDER: Partial<Record<FilterCategory, number>> = {
-  TITLE: 0, SENIORITY: 1, SKILL: 2, CITY: 3,
-  EXPERIENCE: 4, "WORK PREF": 5, INDUSTRY: 6, LANGUAGE: 7, INFERRED: 8,
+  TITLE: 0, SKILL: 1, EXPERIENCE: 2, CITY: 3,
+  "WORK PREF": 4, INDUSTRY: 5, LANGUAGE: 6, "LAST ACTIVE": 7, SENIORITY: 8, INFERRED: 9,
 };
-
-type ChipData =
-  | { kind: "filter"; filter: ExtractedFilter; matched: boolean; sortKey: number }
-  | { kind: "info"; icon: React.ElementType; label: string; sortKey: number };
 
 function CandidateFilterChips({
   filters,
   candidate,
+  onAdd,
+  onDismiss,
 }: {
   filters: ExtractedFilter[];
   candidate: Candidate;
+  onAdd: (filter: ExtractedFilter) => void;
+  onDismiss: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+
+  const grouped = Object.entries(
+    filters.reduce<Partial<Record<FilterCategory, ExtractedFilter[]>>>((acc, f) => {
+      (acc[f.category] ??= []).push(f);
+      return acc;
+    }, {})
+  ).sort(([a], [b]) => (CATEGORY_ORDER[a as FilterCategory] ?? 99) - (CATEGORY_ORDER[b as FilterCategory] ?? 99));
 
   const skillFilters = filters.filter((f) => f.category === "SKILL");
   const extraSkills = candidate.skills.filter(
@@ -161,55 +170,90 @@ function CandidateFilterChips({
       )
   );
 
-  const chips: ChipData[] = filters.map((filter) => ({
-    kind: "filter",
-    filter,
-    matched: candidateMatchesFilter(candidate, filter),
-    sortKey: CATEGORY_ORDER[filter.category] ?? 99,
-  }));
-
-  if (!filters.some((f) => f.category === "CITY"))
-    chips.push({ kind: "info", icon: MapPin, label: candidate.location, sortKey: CATEGORY_ORDER.CITY! });
-
-  if (!filters.some((f) => f.category === "EXPERIENCE" || f.category === "INFERRED"))
-    chips.push({ kind: "info", icon: Clock, label: `${candidate.experienceYears}y exp`, sortKey: CATEGORY_ORDER.EXPERIENCE! });
-
-  chips.sort((a, b) => a.sortKey - b.sortKey);
-
   return (
     <div className="flex flex-wrap gap-1.5">
-      {chips.map((chip, i) => {
-        if (chip.kind === "info") {
-          const Icon = chip.icon;
-          return (
-            <div key={`info-${i}`} className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground">
-              <Icon className="h-3 w-3 shrink-0" />
-              {chip.label}
-            </div>
-          );
-        }
-        const { filter, matched } = chip;
+      {grouped.map(([category, group]) => {
+        const g = group!;
+        const cat = category as FilterCategory;
+        const anyMatch = g.some((f) => candidateMatchesFilter(candidate, f));
+        const shown = g.slice(0, 2).map((f) => f.value).join(", ");
+        const extra = g.length > 2 ? g.length - 2 : 0;
+        const activeValues = new Set(g.map((f) => f.value));
+        const availableOptions = (FILTER_VALUE_OPTIONS[cat] ?? []).filter((v) => !activeValues.has(v));
+
         return (
-          <div
-            key={filter.id}
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium",
-              matched
-                ? "bg-green-50 border-green-300 text-green-800 dark:bg-green-900/30 dark:border-green-700 dark:text-green-400"
-                : "bg-red-50 border-red-200 text-red-700 dark:bg-red-900/30 dark:border-red-800 dark:text-red-400"
-            )}
-          >
-            {matched ? <Check className="h-3 w-3 shrink-0" /> : <X className="h-3 w-3 shrink-0" />}
-            {filter.value}
-          </div>
+          <DropdownMenu key={category}>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-opacity hover:opacity-75",
+                    anyMatch
+                      ? "bg-green-50 border-green-300 text-green-800 dark:bg-green-900/30 dark:border-green-700 dark:text-green-400"
+                      : "bg-red-50 border-red-200 text-red-700 dark:bg-red-900/30 dark:border-red-800 dark:text-red-400"
+                  )}
+                >
+                  {anyMatch ? <Check className="h-3 w-3 shrink-0" /> : <X className="h-3 w-3 shrink-0" />}
+                  <span>{shown}</span>
+                  {extra > 0 && <span className="opacity-60">+{extra}</span>}
+                </button>
+              }
+            />
+            <DropdownMenuContent>
+              {g.map((f) => (
+                <DropdownMenuItem key={f.id} onClick={() => onDismiss(f.id)}>
+                  <Check className="h-3.5 w-3.5 shrink-0" />
+                  {f.value}
+                </DropdownMenuItem>
+              ))}
+              {availableOptions.map((value) => (
+                <DropdownMenuItem
+                  key={value}
+                  onClick={() =>
+                    onAdd({
+                      id: `chip-${Date.now()}-${Math.random()}`,
+                      category: cat,
+                      value,
+                      matchedText: "",
+                      confidence: "high",
+                      confirmed: true,
+                      start: 0,
+                      end: 0,
+                    })
+                  }
+                >
+                  <span className="w-3.5 shrink-0" />
+                  {value}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         );
       })}
+
+      {!filters.some((f) => f.category === "CITY") && (
+        <div className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground">
+          <MapPin className="h-3 w-3 shrink-0" />
+          {candidate.location}
+        </div>
+      )}
+      {!filters.some((f) => f.category === "EXPERIENCE" || f.category === "INFERRED") && (
+        <div className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground">
+          <Clock className="h-3 w-3 shrink-0" />
+          {candidate.experienceYears}y exp
+        </div>
+      )}
 
       {extraSkills.length > 0 && (
         expanded ? (
           <>
-            {extraSkills.map((skill) => (
-              <Badge key={skill} variant="secondary" className="text-xs font-normal">
+            {extraSkills.map((skill, i) => (
+              <Badge
+                key={skill}
+                variant="secondary"
+                className="text-xs font-normal animate-in fade-in-0 zoom-in-95 duration-150"
+                style={{ animationDelay: `${i * 30}ms`, animationFillMode: "both" }}
+              >
                 {skill}
               </Badge>
             ))}
@@ -236,29 +280,37 @@ function CandidateFilterChips({
 // ─── add filter ───────────────────────────────────────────────────────────────
 
 const FILTER_VALUE_OPTIONS: Record<FilterCategory, string[]> = {
-  TITLE:        ["Senior", "Mid-level", "Junior", "Lead", "Principal", "Staff"],
-  SKILL:        ["React", "TypeScript", "Python", "Node.js", "GraphQL", "AWS", "Vue", "Swift"],
-  CITY:         ["London", "New York", "Berlin", "Amsterdam", "Toronto", "Remote"],
-  "WORK PREF":  ["Remote", "Hybrid", "On-site"],
-  INDUSTRY:     ["FinTech", "HealthTech", "SaaS", "E-commerce", "Gaming", "Enterprise"],
-  LANGUAGE:     ["English", "Spanish", "French", "German", "Mandarin", "Portuguese"],
-  SENIORITY:    ["Associate", "Junior", "Mid-level", "Senior", "Staff", "Principal", "Director"],
-  EXPERIENCE:   ["0–1 yrs", "2–4 yrs", "5–7 yrs", "8–10 yrs", "10+ yrs"],
-  INFERRED:     [],
+  TITLE:          ["Software Engineer", "Frontend Developer", "Backend Developer", "Full-stack Developer", "Engineering Manager", "Product Manager", "Product Designer", "Data Scientist", "DevOps Engineer"],
+  SKILL:          ["React", "TypeScript", "Python", "Node.js", "GraphQL", "AWS", "Go", "Kubernetes", "Figma", "SQL"],
+  EXPERIENCE:     ["0–1 yrs", "2–4 yrs", "5–7 yrs", "8–10 yrs", "10+ yrs"],
+  CITY:           ["London", "New York", "Berlin", "Amsterdam", "Toronto", "Singapore", "Remote"],
+  "WORK PREF":    ["Remote", "Hybrid", "On-site"],
+  INDUSTRY:       ["FinTech", "HealthTech", "SaaS", "E-commerce", "AI / ML", "Enterprise", "Gaming"],
+  LANGUAGE:       ["English", "Spanish", "French", "German", "Mandarin", "Portuguese", "Arabic"],
+  "LAST ACTIVE":  ["Past week", "Past month", "Past 3 months", "Past 6 months"],
+  SENIORITY:      [],
+  INFERRED:       [],
 };
 
 const FILTER_OPTIONS: { category: FilterCategory; label: string; icon: React.ElementType }[] = [
-  { category: "TITLE",      label: "Title",           icon: Briefcase    },
-  { category: "SKILL",      label: "Skill",           icon: Star         },
-  { category: "CITY",       label: "Location",        icon: MapPin       },
-  { category: "WORK PREF",  label: "Work Preference", icon: Home         },
-  { category: "INDUSTRY",   label: "Industry",        icon: Building2    },
-  { category: "LANGUAGE",   label: "Language",        icon: Languages    },
-  { category: "SENIORITY",  label: "Seniority",       icon: TrendingUp   },
-  { category: "EXPERIENCE", label: "Experience",      icon: CalendarDays },
+  { category: "TITLE",       label: "Title",           icon: Briefcase    },
+  { category: "SKILL",       label: "Skills",          icon: Star         },
+  { category: "EXPERIENCE",  label: "Experience",      icon: CalendarDays },
+  { category: "CITY",        label: "Location",        icon: MapPin       },
+  { category: "WORK PREF",   label: "Work preference", icon: Home         },
+  { category: "INDUSTRY",    label: "Industry",        icon: Building2    },
+  { category: "LANGUAGE",    label: "Languages",       icon: Languages    },
+  { category: "LAST ACTIVE", label: "Last active",     icon: Clock        },
 ];
 
-function AddFilterChip({ onAdd }: { onAdd: (filter: ExtractedFilter) => void }) {
+function AddFilterChip({
+  onAdd,
+  activeFilters,
+}: {
+  onAdd: (filter: ExtractedFilter) => void;
+  activeFilters: ExtractedFilter[];
+}) {
+  const activeValues = new Set(activeFilters.map((f) => f.value));
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -277,25 +329,31 @@ function AddFilterChip({ onAdd }: { onAdd: (filter: ExtractedFilter) => void }) 
               {label}
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
-              {FILTER_VALUE_OPTIONS[category].map((value) => (
-                <DropdownMenuItem
-                  key={value}
-                  onClick={() =>
-                    onAdd({
-                      id: `manual-${Date.now()}-${Math.random()}`,
-                      category,
-                      value,
-                      matchedText: "",
-                      confidence: "high",
-                      confirmed: false,
-                      start: 0,
-                      end: 0,
-                    })
-                  }
-                >
-                  {value}
-                </DropdownMenuItem>
-              ))}
+              {FILTER_VALUE_OPTIONS[category].map((value) => {
+                const isActive = activeValues.has(value);
+                return (
+                  <DropdownMenuItem
+                    key={value}
+                    onClick={() =>
+                      !isActive &&
+                      onAdd({
+                        id: `manual-${Date.now()}-${Math.random()}`,
+                        category,
+                        value,
+                        matchedText: "",
+                        confidence: "high",
+                        confirmed: false,
+                        start: 0,
+                        end: 0,
+                      })
+                    }
+                    className={cn(isActive && "opacity-40 pointer-events-none")}
+                  >
+                    {value}
+                    {isActive && <Check className="ml-auto h-3.5 w-3.5" />}
+                  </DropdownMenuItem>
+                );
+              })}
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         ))}
@@ -307,15 +365,16 @@ function AddFilterChip({ onAdd }: { onAdd: (filter: ExtractedFilter) => void }) 
 // ─── chip bar ─────────────────────────────────────────────────────────────────
 
 const CATEGORY_LABEL: Record<FilterCategory, string> = {
-  TITLE: "TITLE",
-  SKILL: "SKILL",
-  CITY: "CITY",
-  INDUSTRY: "INDUSTRY",
-  "WORK PREF": "WORK PREF",
-  LANGUAGE: "LANGUAGE",
-  SENIORITY: "SENIORITY",
-  EXPERIENCE: "EXPERIENCE",
-  INFERRED: "INFERRED · LOW CONF",
+  TITLE:          "TITLE",
+  SKILL:          "SKILL",
+  CITY:           "LOCATION",
+  INDUSTRY:       "INDUSTRY",
+  "WORK PREF":    "WORK PREF",
+  LANGUAGE:       "LANGUAGE",
+  SENIORITY:      "SENIORITY",
+  EXPERIENCE:     "EXPERIENCE",
+  "LAST ACTIVE":  "LAST ACTIVE",
+  INFERRED:       "INFERRED · LOW CONF",
 };
 
 function FilterChip({
@@ -396,6 +455,114 @@ function FilterChip({
   );
 }
 
+function GroupedFilterChip({
+  filters,
+  onDismiss,
+  onConfirm,
+  onUpdate,
+  onAdd,
+}: {
+  filters: ExtractedFilter[];
+  onDismiss: (id: string) => void;
+  onConfirm: (id: string) => void;
+  onUpdate: (id: string, newValue: string) => void;
+  onAdd: (filter: ExtractedFilter) => void;
+}) {
+  const anyUnconfirmed = filters.some((f) => !f.confirmed);
+  const cat = filters[0].category;
+  const options = FILTER_VALUE_OPTIONS[cat] ?? [];
+  const activeValues = new Set(filters.map((f) => f.value));
+  const availableOptions = options.filter((v) => !activeValues.has(v));
+  const shown = filters.slice(0, 2).map((f) => f.value).join(", ");
+  const extra = filters.length > 2 ? filters.length - 2 : 0;
+
+  return (
+    <div
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border text-xs transition-colors duration-300",
+        anyUnconfirmed
+          ? "bg-yellow-100 border-yellow-300 dark:bg-yellow-900/40 dark:border-yellow-700/50"
+          : "bg-background border-border",
+      )}
+    >
+      {anyUnconfirmed && (
+        <button
+          onClick={() => filters.forEach((f) => !f.confirmed && onConfirm(f.id))}
+          className="group/confirm pl-3 py-1 shrink-0 transition-colors text-yellow-500 hover:text-foreground"
+        >
+          <Sparkles className="h-3 w-3 group-hover/confirm:hidden" />
+          <Check className="h-3 w-3 hidden group-hover/confirm:block" />
+        </button>
+      )}
+
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <button className={cn(
+              "inline-flex items-center gap-1.5 py-1 hover:opacity-70 transition-opacity",
+              anyUnconfirmed ? "pr-1" : "pl-3 pr-1"
+            )}>
+              <span className={cn(
+                "text-[10px] font-semibold uppercase tracking-wide shrink-0",
+                anyUnconfirmed ? "text-yellow-700 dark:text-yellow-500" : "text-muted-foreground"
+              )}>
+                {CATEGORY_LABEL[cat]}
+              </span>
+              <span className="font-medium text-foreground">{shown}</span>
+              {extra > 0 && <span className="text-muted-foreground font-normal">+{extra}</span>}
+            </button>
+          }
+        />
+        <DropdownMenuContent>
+          {filters.map((f) => (
+            <DropdownMenuSub key={f.id}>
+              <DropdownMenuSubTrigger>{f.value}</DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {options.map((value) => (
+                  <DropdownMenuItem key={value} onClick={() => onUpdate(f.id, value)}>
+                    {value}
+                    {value === f.value && <Check className="ml-auto h-3.5 w-3.5 opacity-40" />}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuItem onClick={() => onDismiss(f.id)} className="text-destructive focus:text-destructive">
+                  Remove
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          ))}
+          {availableOptions.map((value) => (
+            <DropdownMenuItem
+              key={value}
+              onClick={() =>
+                onAdd({
+                  id: `manual-${Date.now()}-${Math.random()}`,
+                  category: cat,
+                  value,
+                  matchedText: "",
+                  confidence: "high",
+                  confirmed: false,
+                  start: 0,
+                  end: 0,
+                })
+              }
+            >
+              <Plus className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              {value}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <button
+        onClick={() => filters.forEach((f) => onDismiss(f.id))}
+        className="pl-0.5 pr-3 py-1 text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
 function ChipBar({
   filters,
   confirmed,
@@ -443,10 +610,22 @@ function ChipBar({
       )}
 
       <div className="flex flex-wrap gap-2">
-        {filters.map((f) => (
-          <FilterChip key={f.id} filter={f} onDismiss={onDismiss} onConfirm={onConfirm} onUpdate={onUpdate} />
-        ))}
-        <AddFilterChip onAdd={onAdd} />
+        {Object.entries(
+          filters.reduce<Partial<Record<FilterCategory, ExtractedFilter[]>>>((acc, f) => {
+            (acc[f.category] ??= []).push(f);
+            return acc;
+          }, {})
+        )
+          .sort(([a], [b]) => (CATEGORY_ORDER[a as FilterCategory] ?? 99) - (CATEGORY_ORDER[b as FilterCategory] ?? 99))
+          .map(([, group]) => {
+            const g = group!;
+            return g.length === 1 ? (
+              <FilterChip key={g[0].id} filter={g[0]} onDismiss={onDismiss} onConfirm={onConfirm} onUpdate={onUpdate} />
+            ) : (
+              <GroupedFilterChip key={g[0].category} filters={g} onDismiss={onDismiss} onConfirm={onConfirm} onUpdate={onUpdate} onAdd={onAdd} />
+            );
+          })}
+        <AddFilterChip onAdd={onAdd} activeFilters={filters} />
       </div>
     </div>
   );
@@ -490,7 +669,117 @@ function HighlightedPrompt({
       >
         <Pencil className="h-3 w-3" />
         Edit
+        <kbd className="text-[10px] opacity-60 font-sans">⌘E</kbd>
       </button>
+    </div>
+  );
+}
+
+// ─── last search persistence ─────────────────────────────────────────────────
+
+interface LastSearch {
+  prompt: string;
+  filters: ExtractedFilter[];
+  resultCount: number;
+  timestamp: number;
+}
+
+const LAST_SEARCH_KEY = "fn-last-search";
+
+const _yesterday = new Date();
+_yesterday.setDate(_yesterday.getDate() - 1);
+_yesterday.setHours(14, 12, 0, 0);
+
+const SEED_LAST_SEARCH: LastSearch = {
+  prompt: "Senior frontend developer with React and TypeScript, based in London",
+  filters: [
+    { id: "seed-1", category: "SENIORITY", value: "Senior",     matchedText: "Senior",     confidence: "high", confirmed: true,  start: 0,  end: 6  },
+    { id: "seed-2", category: "SKILL",     value: "React",      matchedText: "React",      confidence: "high", confirmed: true,  start: 28, end: 33 },
+    { id: "seed-3", category: "SKILL",     value: "TypeScript", matchedText: "TypeScript", confidence: "high", confirmed: false, start: 38, end: 48 },
+    { id: "seed-4", category: "CITY",      value: "London",     matchedText: "London",     confidence: "high", confirmed: true,  start: 57, end: 63 },
+  ],
+  resultCount: 4,
+  timestamp: _yesterday.getTime(),
+};
+
+function saveLastSearch(data: LastSearch) {
+  try { localStorage.setItem(LAST_SEARCH_KEY, JSON.stringify(data)); } catch {}
+}
+
+function loadLastSearch(): LastSearch | null {
+  try {
+    const raw = localStorage.getItem(LAST_SEARCH_KEY);
+    return raw ? (JSON.parse(raw) as LastSearch) : null;
+  } catch { return null; }
+}
+
+function formatSearchTime(ts: number): string {
+  const d = new Date(ts);
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yestStart = new Date(todayStart.getTime() - 86400000);
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  if (d >= todayStart) return `TODAY · ${time}`;
+  if (d >= yestStart) return `YESTERDAY · ${time}`;
+  return `${d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()} · ${time}`;
+}
+
+function LastSearchBanner({
+  lastSearch,
+  onResume,
+}: {
+  lastSearch: LastSearch;
+  onResume: () => void;
+}) {
+  return (
+    <div className="rounded-lg border bg-background px-4 py-3 flex flex-col gap-2.5 animate-in fade-in-0 duration-200">
+      <div className="flex items-start justify-between gap-4">
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+          Last search · {formatSearchTime(lastSearch.timestamp)}
+        </span>
+        <Button variant="outline" size="sm" onClick={onResume}>Resume</Button>
+      </div>
+      <p className="text-sm">"{lastSearch.prompt}"</p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {Object.entries(
+          lastSearch.filters.reduce<Partial<Record<FilterCategory, ExtractedFilter[]>>>((acc, f) => {
+            (acc[f.category] ??= []).push(f);
+            return acc;
+          }, {})
+        )
+          .sort(([a], [b]) => (CATEGORY_ORDER[a as FilterCategory] ?? 99) - (CATEGORY_ORDER[b as FilterCategory] ?? 99))
+          .map(([category, group]) => {
+            const g = group!;
+            const unconfirmed = g.some((f) => !f.confirmed);
+            const shown = g.slice(0, 2).map((f) => f.value).join(", ");
+            const extra = g.length > 2 ? g.length - 2 : 0;
+            return (
+              <div
+                key={category}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs",
+                  unconfirmed
+                    ? "bg-yellow-100 border-yellow-300 dark:bg-yellow-900/40 dark:border-yellow-700/50"
+                    : "border-border"
+                )}
+              >
+                {unconfirmed && <Sparkles className="h-3 w-3 shrink-0 text-yellow-500" />}
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {category}
+                </span>
+                <span className="font-medium text-foreground">{shown}</span>
+                {extra > 0 && (
+                  <span className="text-muted-foreground font-normal">+{extra}</span>
+                )}
+              </div>
+            );
+          })}
+        {lastSearch.resultCount > 0 && (
+          <span className="text-xs text-muted-foreground">
+            — {lastSearch.resultCount} result{lastSearch.resultCount !== 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -506,6 +795,7 @@ export default function SearchPage() {
   const [highlightsReady, setHighlightsReady] = useState(false);
   const [chipsLoading, setChipsLoading] = useState(false);
   const [resultsLoading, setResultsLoading] = useState(false);
+  const [lastSearch, setLastSearch] = useState<LastSearch | null>(() => loadLastSearch() ?? SEED_LAST_SEARCH);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -527,6 +817,20 @@ export default function SearchPage() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // Re-score when chips are edited/added/removed after results are loaded
+  useEffect(() => {
+    if (results === null) return;
+    const promptTerms = extractTerms(prompt);
+    const filterTerms = filters.flatMap((f) => f.value.toLowerCase().split(/\s+/));
+    const terms = [...new Set([...promptTerms, ...filterTerms])];
+    const scored = CANDIDATES
+      .map((c) => scoreCandidate(c, terms))
+      .filter((r) => r.score > 0)
+      .sort((a, b) => b.score - a.score);
+    setResults(scored);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
+
   const runSearch = useCallback((text: string) => {
     if (!text.trim()) return;
     timers.current.forEach(clearTimeout);
@@ -547,8 +851,10 @@ export default function SearchPage() {
     timers.current.push(setTimeout(() => setChipsLoading(true), 650));
 
     // 3. Chips resolve
+    let extractedFilters: ExtractedFilter[] = [];
     timers.current.push(setTimeout(() => {
-      setFilters(extractFilters(text));
+      extractedFilters = extractFilters(text);
+      setFilters(extractedFilters);
       setChipsLoading(false);
     }, 1050));
 
@@ -563,6 +869,9 @@ export default function SearchPage() {
         .sort((a, b) => b.score - a.score);
       setResults(scored);
       setResultsLoading(false);
+      const ls: LastSearch = { prompt: text, filters: extractedFilters, resultCount: scored.length, timestamp: Date.now() };
+      saveLastSearch(ls);
+      setLastSearch(ls);
     }, 1650));
   }, []);
 
@@ -595,6 +904,18 @@ export default function SearchPage() {
     );
   }
 
+  function handleAddFilter(filter: ExtractedFilter) {
+    const sep = ", ";
+    const start = prompt.length + sep.length;
+    const end = start + filter.value.length;
+    setPrompt((p) => p + sep + filter.value);
+    setFilters((f) => [...f, { ...filter, confirmed: true, confidence: "high", matchedText: filter.value, start, end }]);
+  }
+
+  function handleDismissFilter(id: string) {
+    setFilters((f) => f.filter((x) => x.id !== id));
+  }
+
   function handleReset() {
     timers.current.forEach(clearTimeout);
     timers.current = [];
@@ -604,6 +925,25 @@ export default function SearchPage() {
     setEditMode(true);
     setConfirmed(false);
     setHighlightsReady(false);
+    setChipsLoading(false);
+    setResultsLoading(false);
+  }
+
+  function handleResume() {
+    if (!lastSearch) return;
+    const terms = extractTerms(lastSearch.prompt);
+    const filterTerms = lastSearch.filters.flatMap((f) => f.value.toLowerCase().split(/\s+/));
+    const allTerms = [...new Set([...terms, ...filterTerms])];
+    const scored = CANDIDATES
+      .map((c) => scoreCandidate(c, allTerms))
+      .filter((r) => r.score > 0)
+      .sort((a, b) => b.score - a.score);
+    setPrompt(lastSearch.prompt);
+    setFilters(lastSearch.filters);
+    setConfirmed(true);
+    setEditMode(false);
+    setHighlightsReady(true);
+    setResults(scored);
     setChipsLoading(false);
     setResultsLoading(false);
   }
@@ -618,20 +958,22 @@ export default function SearchPage() {
         {/* Prompt area */}
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between px-0.5">
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Prompt
+            <span className="text-sm text-muted-foreground">
+              Describe what you are looking for
             </span>
-            <span className="text-[11px] text-muted-foreground">
-              {editMode ? "⌘↵ to search" : "⌘E to edit · Esc to clear"}
-            </span>
+            {!editMode && (
+              <span className="text-[11px] text-muted-foreground">
+                ⌘E to edit · Esc to clear
+              </span>
+            )}
           </div>
 
           {editMode ? (
-            <div className="flex gap-2 items-start animate-in fade-in-0 duration-200">
+            <div className="relative animate-in fade-in-0 duration-200">
               <Textarea
                 ref={textareaRef}
-                placeholder="Describe the candidate you're looking for… e.g. Senior React developer with TypeScript, 5+ years, based in London"
-                className="min-h-[3.5rem] max-h-40 resize-none text-sm"
+                placeholder="Senior React developer with TypeScript, 5+ years, based in London"
+                className="min-h-[5rem] max-h-40 resize-none text-sm pb-11"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -639,9 +981,11 @@ export default function SearchPage() {
               <Button
                 onClick={handleSearch}
                 disabled={!prompt.trim()}
-                className="shrink-0"
+                size="sm"
+                className="absolute bottom-2 right-2 gap-2"
               >
-                Search →
+                Search
+                <kbd className="text-[10px] opacity-60 font-sans">⌘↵</kbd>
               </Button>
             </div>
           ) : (
@@ -670,23 +1014,10 @@ export default function SearchPage() {
               <ChipBar
                 filters={filters}
                 confirmed={confirmed}
-                onDismiss={(id) => setFilters((f) => f.filter((x) => x.id !== id))}
+                onDismiss={handleDismissFilter}
                 onConfirm={(id) => setFilters((f) => f.map((x) => x.id === id ? { ...x, confirmed: true } : x))}
                 onUpdate={handleUpdate}
-                onAdd={(filter) => {
-                  const sep = ", ";
-                  const start = prompt.length + sep.length;
-                  const end = start + filter.value.length;
-                  setPrompt((p) => p + sep + filter.value);
-                  setFilters((f) => [...f, {
-                    ...filter,
-                    confirmed: true,
-                    confidence: "high",
-                    matchedText: filter.value,
-                    start,
-                    end,
-                  }]);
-                }}
+                onAdd={handleAddFilter}
                 onConfirmAll={() => { setFilters((f) => f.map((x) => ({ ...x, confirmed: true }))); setConfirmed(true); }}
                 onDismissAll={() => setFilters([])}
               />
@@ -694,9 +1025,16 @@ export default function SearchPage() {
           )
         )}
 
-        {/* Suggested prompts — only before first search */}
+        {/* Last search + suggested prompts — only before first search */}
         {!hasResults && !isSearching && (
-          <div className="flex flex-col gap-2 pt-2">
+          <div className="flex flex-col gap-4 pt-2">
+            {lastSearch && (
+              <LastSearchBanner
+                lastSearch={lastSearch}
+                onResume={handleResume}
+              />
+            )}
+            <div className="flex flex-col gap-2">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
               Suggested searches
             </p>
@@ -711,6 +1049,7 @@ export default function SearchPage() {
                   {s}
                 </button>
               ))}
+            </div>
             </div>
           </div>
         )}
@@ -749,10 +1088,13 @@ export default function SearchPage() {
                 {results!.map(({ candidate, matchedTerms }, index) => (
                   <Card
                     key={candidate.id}
-                    className="cursor-pointer hover:bg-accent/50 transition-colors animate-in fade-in-0 slide-in-from-bottom-2 duration-300"
+                    className={cn(
+                      "cursor-pointer hover:bg-accent/50 transition-colors animate-in fade-in-0 slide-in-from-bottom-2 duration-300",
+                      candidate.matchScore > 90 && "border-green-400 dark:border-green-600"
+                    )}
                     style={{ animationDelay: `${index * 40}ms`, animationFillMode: "both" }}
                   >
-                    <CardHeader className="pb-2 pt-4 px-4">
+                    <CardHeader className="pb-2 pt-3 px-4">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex items-center gap-3 min-w-0">
                           <Avatar className="h-9 w-9 shrink-0">
@@ -772,19 +1114,19 @@ export default function SearchPage() {
                           >
                             {candidate.matchScore}%
                           </Badge>
-                          <Badge variant="outline">{candidate.status}</Badge>
                         </div>
                       </div>
                     </CardHeader>
                     <CardContent className="px-4 pb-4 flex flex-col gap-3">
                       <p className="text-sm text-muted-foreground">{highlightSummary(candidate.summary, matchedTerms)}</p>
 
-                      <CandidateFilterChips filters={filters} candidate={candidate} />
+                      <CandidateFilterChips
+                        filters={filters}
+                        candidate={candidate}
+                        onAdd={handleAddFilter}
+                        onDismiss={handleDismissFilter}
+                      />
 
-                      <div className="flex items-center gap-2 pt-1">
-                        <Button size="sm" variant="outline">View profile</Button>
-                        <Button size="sm">Shortlist</Button>
-                      </div>
                     </CardContent>
                   </Card>
                 ))}
