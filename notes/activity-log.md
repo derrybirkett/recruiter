@@ -1,3 +1,21 @@
+## 2026-05-20 | Session Wrap-Up (3)
+
+**Version:** v1.4.0
+**Commits:**
+- docs: add chip drag-reorder design spec
+- docs: add chip drag-reorder implementation plan
+- chore: install @dnd-kit/core, sortable, utilities
+- feat: thread categoryOrder state through search page
+- feat: sort candidate card chips by user-defined categoryOrder
+- feat: add dnd-kit imports for drag-to-reorder
+- fix: restore onReorder to ChipBar and correct indexOf sort pattern
+- feat: drag-to-reorder filter chips with @dnd-kit, reflect order in candidate cards
+- refactor: remove dead CATEGORY_ORDER const, wrap handleReorder in useCallback
+
+Added drag-to-reorder for filter chips. Users hold and drag a chip in the chip bar to set priority order; the order persists across searches in the session. Candidate cards and the last-search banner both respect the same `categoryOrder` array, so the most important attribute is always leftmost for quick scanning. Used @dnd-kit with a `distance: 5` mouse sensor (click still opens dropdowns) and `delay: 250ms` touch sensor. A `DragOverlay` provides a shadow-elevated ghost following the cursor while the original slot fades to 30% opacity. Went through a full brainstorm → design spec → plan → subagent-driven execution cycle.
+
+---
+
 ## 2026-05-20 | Session Wrap-Up (2)
 
 **Version:** v1.3.0
