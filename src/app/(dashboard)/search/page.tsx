@@ -151,11 +151,13 @@ function CandidateFilterChips({
   candidate,
   onAdd,
   onDismiss,
+  categoryOrder,
 }: {
   filters: ExtractedFilter[];
   candidate: Candidate;
   onAdd: (filter: ExtractedFilter) => void;
   onDismiss: (id: string) => void;
+  categoryOrder: FilterCategory[];
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -164,7 +166,7 @@ function CandidateFilterChips({
       (acc[f.category] ??= []).push(f);
       return acc;
     }, {})
-  ).sort(([a], [b]) => (CATEGORY_ORDER[a as FilterCategory] ?? 99) - (CATEGORY_ORDER[b as FilterCategory] ?? 99));
+  ).sort(([a], [b]) => (categoryOrder.indexOf(a as FilterCategory) ?? 99) - (categoryOrder.indexOf(b as FilterCategory) ?? 99));
 
   const skillFilters = filters.filter((f) => f.category === "SKILL");
   const extraSkills = candidate.skills.filter(
@@ -572,6 +574,7 @@ function GroupedFilterChip({
 function ChipBar({
   filters,
   confirmed,
+  categoryOrder,
   onDismiss,
   onConfirm,
   onUpdate,
@@ -581,6 +584,7 @@ function ChipBar({
 }: {
   filters: ExtractedFilter[];
   confirmed: boolean;
+  categoryOrder: FilterCategory[];
   onDismiss: (id: string) => void;
   onConfirm: (id: string) => void;
   onUpdate: (id: string, newValue: string) => void;
@@ -622,7 +626,7 @@ function ChipBar({
             return acc;
           }, {})
         )
-          .sort(([a], [b]) => (CATEGORY_ORDER[a as FilterCategory] ?? 99) - (CATEGORY_ORDER[b as FilterCategory] ?? 99))
+          .sort(([a], [b]) => (categoryOrder.indexOf(a as FilterCategory) ?? 99) - (categoryOrder.indexOf(b as FilterCategory) ?? 99))
           .map(([, group]) => {
             const g = group!;
             return g.length === 1 ? (
@@ -732,9 +736,11 @@ function formatSearchTime(ts: number): string {
 
 function LastSearchBanner({
   lastSearch,
+  categoryOrder,
   onResume,
 }: {
   lastSearch: LastSearch;
+  categoryOrder: FilterCategory[];
   onResume: () => void;
 }) {
   return (
@@ -753,7 +759,7 @@ function LastSearchBanner({
             return acc;
           }, {})
         )
-          .sort(([a], [b]) => (CATEGORY_ORDER[a as FilterCategory] ?? 99) - (CATEGORY_ORDER[b as FilterCategory] ?? 99))
+          .sort(([a], [b]) => (categoryOrder.indexOf(a as FilterCategory) ?? 99) - (categoryOrder.indexOf(b as FilterCategory) ?? 99))
           .map(([category, group]) => {
             const g = group!;
             const unconfirmed = g.some((f) => !f.confirmed);
@@ -1108,7 +1114,6 @@ export default function SearchPage() {
                 filters={filters}
                 confirmed={confirmed}
                 categoryOrder={categoryOrder}
-                onReorder={handleReorder}
                 onDismiss={handleDismissFilter}
                 onConfirm={(id) => setFilters((f) => f.map((x) => x.id === id ? { ...x, confirmed: true } : x))}
                 onUpdate={handleUpdate}
