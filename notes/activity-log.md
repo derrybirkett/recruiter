@@ -1,3 +1,13 @@
+## 2026-05-21 | Session Wrap-Up (continued)
+
+**Version:** v1.7.2
+**Commits:**
+- chore: redirect home to search page
+
+One-liner: changed the root page redirect from `/candidates` to `/search` so the app lands on the prompt search view by default.
+
+---
+
 ## 2026-05-21 | Session Wrap-Up
 
 **Version:** v1.7.1
