@@ -19,6 +19,7 @@ export interface ExtractedFilter {
   confirmed: boolean;
   start: number;
   end: number;
+  source?: "extracted" | "manual";
 }
 
 // ─── lookup tables ───────────────────────────────────────────────────────────
@@ -167,6 +168,37 @@ export function extractFilters(text: string): ExtractedFilter[] {
     });
   }
 
+  // EXPERIENCE — explicit year ranges ("3–6 years", "5+ years", "at least 4 years")
+  const EXP_RANGE_RE = /\b(\d+)\s*[–\-]\s*(\d+)\s+years?(?:\s+(?:of\s+)?(?:experience|exp))?\b/gi;
+  for (const m of text.matchAll(EXP_RANGE_RE)) {
+    filters.push({
+      id: nextId(),
+      category: "EXPERIENCE",
+      value: `${m[1]}–${m[2]} yrs`,
+      matchedText: m[0],
+      confidence: "high",
+      confirmed: false,
+      start: m.index!,
+      end: m.index! + m[0].length,
+    });
+  }
+
+  const EXP_PLUS_RE =
+    /\b(\d+)\+\s*years?(?:\s+(?:of\s+)?(?:experience|exp))?\b|\bat\s+least\s+(\d+)\s+years?(?:\s+(?:of\s+)?experience)?\b|\bover\s+(\d+)\s+years?(?:\s+(?:of\s+)?experience)?\b|\bminimum\s+(\d+)\s+years?(?:\s+(?:of\s+)?experience)?\b/gi;
+  for (const m of text.matchAll(EXP_PLUS_RE)) {
+    const n = m[1] ?? m[2] ?? m[3] ?? m[4];
+    filters.push({
+      id: nextId(),
+      category: "EXPERIENCE",
+      value: `${n}+ yrs`,
+      matchedText: m[0],
+      confidence: "high",
+      confirmed: false,
+      start: m.index!,
+      end: m.index! + m[0].length,
+    });
+  }
+
   // INFERRED — seniority level → years
   const SEN_RE = /\b(senior|junior|mid-level|lead|principal|staff)\b/gi;
   const seen = new Set<string>();
@@ -208,22 +240,27 @@ function deduplicateBySpan(filters: ExtractedFilter[]): ExtractedFilter[] {
 export interface TextSegment {
   text: string;
   highlighted: boolean;
+  dismissed?: boolean;
 }
 
 export function buildSegments(
   text: string,
-  filters: ExtractedFilter[]
+  filters: ExtractedFilter[],
+  dismissed: ExtractedFilter[] = []
 ): TextSegment[] {
-  const ranges = filters
-    .map((f) => ({ start: f.start, end: f.end }))
-    .sort((a, b) => a.start - b.start);
+  type Tagged = { start: number; end: number; dismissed: boolean };
+  const all: Tagged[] = [
+    ...filters.map((f) => ({ start: f.start, end: f.end, dismissed: false })),
+    ...dismissed.map((f) => ({ start: f.start, end: f.end, dismissed: true })),
+  ].sort((a, b) => a.start - b.start);
 
-  // Merge overlapping ranges
-  const merged: Array<{ start: number; end: number }> = [];
-  for (const r of ranges) {
+  // Merge overlapping ranges; active (not dismissed) wins
+  const merged: Tagged[] = [];
+  for (const r of all) {
     const last = merged[merged.length - 1];
     if (last && r.start <= last.end) {
       last.end = Math.max(last.end, r.end);
+      if (!r.dismissed) last.dismissed = false;
     } else {
       merged.push({ ...r });
     }
@@ -234,7 +271,7 @@ export function buildSegments(
   for (const r of merged) {
     if (r.start > pos)
       segments.push({ text: text.slice(pos, r.start), highlighted: false });
-    segments.push({ text: text.slice(r.start, r.end), highlighted: true });
+    segments.push({ text: text.slice(r.start, r.end), highlighted: !r.dismissed, dismissed: r.dismissed });
     pos = r.end;
   }
   if (pos < text.length)

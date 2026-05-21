@@ -756,15 +756,17 @@ function ChipBar({
 function HighlightedPrompt({
   text,
   filters,
+  dismissedFilters,
   highlightsReady,
   onEdit,
 }: {
   text: string;
   filters: ExtractedFilter[];
+  dismissedFilters: ExtractedFilter[];
   highlightsReady: boolean;
   onEdit: () => void;
 }) {
-  const segments = buildSegments(text, filters);
+  const segments = buildSegments(text, filters, dismissedFilters);
 
   return (
     <div className="relative rounded-lg border bg-background px-4 py-3 text-sm leading-7">
@@ -777,6 +779,8 @@ function HighlightedPrompt({
             >
               {seg.text}
             </mark>
+          ) : seg.dismissed ? (
+            <span key={i} className="text-foreground/25">{seg.text}</span>
           ) : (
             <span key={i} className={highlightsReady ? "text-muted-foreground" : ""}>{seg.text}</span>
           )
@@ -1306,6 +1310,7 @@ export default function SearchPage() {
   const [quickFilter, setQuickFilter] = useState<"all" | "top1" | "top3" | "top5">("all");
   const [view, setView] = useState<"list" | "table" | "grid">("list");
   const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
+  const [dismissedFilters, setDismissedFilters] = useState<ExtractedFilter[]>([]);
 
   function toggleBookmark(id: string) {
     setBookmarked((prev) => {
@@ -1373,6 +1378,7 @@ export default function SearchPage() {
     timers.current = [];
 
     setFilters([]);
+    setDismissedFilters([]);
     setResults(null);
     setEditMode(false);
     setConfirmed(false);
@@ -1446,11 +1452,27 @@ export default function SearchPage() {
     const start = prompt.length + sep.length;
     const end = start + filter.value.length;
     setPrompt((p) => p + sep + filter.value);
-    setFilters((f) => [...f, { ...filter, confirmed: true, confidence: "high", matchedText: filter.value, start, end }]);
+    setFilters((f) => [...f, { ...filter, confirmed: true, confidence: "high", matchedText: filter.value, start, end, source: "manual" as const }]);
   }
 
   function handleDismissFilter(id: string) {
-    setFilters((f) => f.filter((x) => x.id !== id));
+    const filter = filters.find((f) => f.id === id);
+    if (!filter) return;
+
+    if (filter.source === "manual") {
+      // Remove ", value" from prompt and shift positions of subsequent filters
+      const removeStart = filter.start - 2; // the ", " separator sits before start
+      const removeLen = filter.end - removeStart;
+      setPrompt((p) => p.slice(0, removeStart) + p.slice(filter.end));
+      const shift = (f: ExtractedFilter) =>
+        f.start >= filter.end ? { ...f, start: f.start - removeLen, end: f.end - removeLen } : f;
+      setFilters((prev) => prev.filter((f) => f.id !== id).map(shift));
+      setDismissedFilters((prev) => prev.map(shift));
+    } else {
+      // Extracted from prompt — remove from active filters, grey out in prompt display
+      setFilters((f) => f.filter((x) => x.id !== id));
+      setDismissedFilters((prev) => [...prev, filter]);
+    }
   }
 
   function handleReset() {
@@ -1458,6 +1480,7 @@ export default function SearchPage() {
     timers.current = [];
     setPrompt("");
     setFilters([]);
+    setDismissedFilters([]);
     setResults(null);
     setEditMode(true);
     setConfirmed(false);
@@ -1618,6 +1641,7 @@ export default function SearchPage() {
               <HighlightedPrompt
                 text={prompt}
                 filters={filters}
+                dismissedFilters={dismissedFilters}
                 highlightsReady={highlightsReady}
                 onEdit={() => setEditMode(true)}
               />
