@@ -1,3 +1,15 @@
+## 2026-05-21 | Handover Email Session
+
+**Version:** v1.7.4
+**Commits:**
+- fix: wire demo video link on slide 1
+- fix: update demo link to YouTube
+- chore: update activity log
+
+Prepared materials for recruiter handover. Fixed the placeholder demo link on slide 1 of the HTML slides, first pointing it to the GitHub Pages MP4 then switching to a YouTube unlisted video (`https://youtu.be/x4v4sJYItqw`) after confirming direct MP4 links don't work reliably in browsers. Both slide 1 CTAs are now live — demo → YouTube, prototype → GitHub Pages app. Drafted the handover email with a link to the slides and a note to attach the PDF.
+
+---
+
 ## 2026-05-21 | Demo Assets Session
 
 **Version:** v1.7.3
