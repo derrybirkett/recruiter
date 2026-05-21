@@ -1,3 +1,14 @@
+## 2026-05-21 | Session Wrap-Up
+
+**Version:** v1.7.1
+**Commits:**
+- chore: configure static export and GitHub Pages deploy workflow
+- feat: extract experience filters from prompt, dismissed chips grey out in prompt display with manual-filter prompt sync
+
+Short session with two streams of work. Set up GitHub Pages deployment: configured Next.js static export with `basePath: "/recruiter"`, converted the root page from a server `redirect()` to a client-side `useRouter` redirect (server redirects throw during static export), added a GitHub Actions workflow that builds and deploys on push to main, made the repo public, and wired up Pages via the gh CLI. Also fixed two search UX issues: `extractFilters` now parses explicit year-range patterns from the prompt ("3–6 years", "5+ years", "at least 4 years", etc.) into EXPERIENCE filter chips — previously only seniority words were extracted. Dismissed filter chips now behave differently depending on origin: chips extracted from the original prompt grey their matched text in the prompt display (`text-foreground/25`) while staying visible; chips added manually via the UI remove their `, value` text from the prompt string entirely and shift subsequent filter positions.
+
+---
+
 ## 2026-05-20 | Session Wrap-Up (5)
 
 **Version:** v1.7.0
