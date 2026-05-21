@@ -1,3 +1,13 @@
+## 2026-05-21 | Demo Assets Session
+
+**Version:** v1.7.3
+**Commits:**
+- chore: add demo assets and set GitHub Pages homepage URL
+
+Added demo assets to the public folder for sharing: `fn_demo.mp4` (screen recording), `fn_case.pdf` (wireframe case study), and three HTML slide files under `public/slides/`. Renamed all files and the folder to clean URL-safe slugs. Set the GitHub Pages URL (`https://derrybirkett.github.io/recruiter`) as the repo homepage on GitHub.
+
+---
+
 ## 2026-05-21 | Session Wrap-Up (continued)
 
 **Version:** v1.7.2
